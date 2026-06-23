@@ -667,13 +667,15 @@
     }
     #dashboard-toggle .toggle-arrow { transition: transform 0.25s; line-height: 1; }
 
-    /* 반응형: 900px 이하 — 사이드바를 off-screen으로 밀고 토글 버튼만 노출 */
-    @media (max-width: 900px) {
+    /*
+     * 드로어 모드: 1024px 이하 (태블릿 세로·가로 + 모든 모바일)
+     * 사이드바를 오른쪽으로 밀어 드로어 탭(28px)만 노출
+     */
+    @media (max-width: 1024px) {
       #sidebar {
         display: flex !important;
         position: fixed; top: 0; right: 0; bottom: 0;
         width: 320px; min-width: 320px;
-        /* 사이드바 내용은 화면 밖으로, 토글 버튼(28px)만 노출 */
         transform: translateX(calc(100% - 28px));
         transition: transform 0.28s ease;
         z-index: 200; overflow: visible;
@@ -683,8 +685,15 @@
         box-shadow: -4px 0 24px rgba(99,102,241,0.15);
       }
       #sidebar.force-show ~ #sidebar-overlay { display: block; }
-      /* 모바일에서 토글 버튼 터치 영역 확보 */
       #dashboard-toggle { width: 32px; height: 72px; }
+    }
+
+    /* 소형 모바일(≤480px): 드로어가 화면의 90% 이하가 되도록 제한 */
+    @media (max-width: 480px) {
+      #sidebar {
+        width: min(320px, 90vw);
+        min-width: 0;
+      }
     }
 
     /* ── 480px 이하 모바일 전용 ── */
@@ -2272,7 +2281,7 @@ ${list}
   /* ── 대시보드 토글 ── */
   const sidebar  = document.getElementById('sidebar');
   const arrow    = document.querySelector('#dashboard-toggle .toggle-arrow');
-  const isMobile = () => window.innerWidth <= 900;
+  const isMobile = () => window.innerWidth <= 1024;
 
   function toggleDashboard() {
     if (isMobile()) {
