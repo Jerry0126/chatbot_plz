@@ -1,0 +1,2582 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>회식 장소 추천 챗봇</title>
+  <script>if(new URLSearchParams(location.search).has('poll'))document.documentElement.classList.add('poll-mode');</script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@fingerprintjs/fingerprintjs@4/dist/fp.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <style>
+    html.poll-mode #main,
+    html.poll-mode #sidebar,
+    html.poll-mode #sidebar-overlay { display: none !important; }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', -apple-system, sans-serif;
+      height: 100vh;
+      display: flex;
+      overflow: hidden;
+      background-color: #f0f0f5;
+      background-image:
+        radial-gradient(ellipse 80% 60% at 20% 110%, rgba(167,139,250,0.25) 0%, transparent 60%),
+        radial-gradient(ellipse 60% 50% at 80% 105%, rgba(199,210,254,0.30) 0%, transparent 55%),
+        radial-gradient(ellipse 50% 40% at 50% 100%, rgba(226,232,240,0.40) 0%, transparent 50%);
+    }
+
+    /* ── 사이드바 ── */
+    #sidebar {
+      width: 380px;
+      min-width: 380px;
+      background: rgba(255,255,255,0.55);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border-left: 1px solid rgba(255,255,255,0.45);
+      box-shadow: -2px 0 16px rgba(99,102,241,0.07);
+      display: flex;
+      flex-direction: column;
+      overflow: visible;
+      position: relative;
+      order: 2;
+      transition: width 0.25s ease, min-width 0.25s ease;
+    }
+
+    /* 대시보드 내부 콘텐츠 영역 */
+    #sidebar-inner {
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      flex: 1;
+      min-height: 0;
+    }
+
+    /* 접힘 상태 */
+    #sidebar.collapsed {
+      width: 0;
+      min-width: 0;
+      border-left: none;
+    }
+    #sidebar.collapsed #sidebar-inner { display: none; }
+    #sidebar.collapsed #dashboard-toggle {
+      border-radius: 10px 0 0 10px;
+      border-right: none;
+    }
+
+    /* 탭 */
+    .sidebar-tabs {
+      display: flex;
+      padding: 12px 12px 0;
+      gap: 4px;
+      border-bottom: 1px solid rgba(255,255,255,0.5);
+      background: rgba(255,255,255,0.4);
+    }
+
+    .tab-btn {
+      flex: 1;
+      padding: 9px 0;
+      border: none;
+      border-radius: 8px 8px 0 0;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      color: #94a3b8;
+      background: transparent;
+      transition: all 0.15s;
+      position: relative;
+    }
+    .tab-btn.active {
+      color: #4f46e5;
+      background: rgba(255,255,255,0.85);
+      box-shadow: 0 -2px 0 0 #4f46e5 inset;
+    }
+    .tab-btn:hover:not(.active) { color: #64748b; background: rgba(255,255,255,0.4); }
+
+    .tab-panel { display: none; flex: 1; flex-direction: column; overflow: hidden; }
+    .tab-panel.active { display: flex; }
+
+    /* ── 목록 탭 ── */
+    #tab-list { overflow: hidden; padding: 0; }
+    #place-list-inner::-webkit-scrollbar { width: 3px; }
+    #place-list-inner::-webkit-scrollbar-thumb { background: rgba(99,102,241,0.2); border-radius: 2px; }
+
+    /* ── 필터 바 ── */
+    #filter-bar {
+      border-bottom: 1px solid rgba(99,102,241,0.10);
+      background: rgba(255,255,255,0.50);
+      flex-shrink: 0;
+    }
+    .fb-toggle-row {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 8px 10px; cursor: pointer; user-select: none;
+    }
+    .fb-toggle-row:hover { background: rgba(99,102,241,0.03); }
+    .fb-toggle-left { display: flex; align-items: center; gap: 6px; }
+    .fb-filter-icon { font-size: 15px; color: #94a3b8; line-height: 1; }
+    .fb-title { font-size: 11px; font-weight: 700; color: #64748b; }
+    .fb-title.active { color: #4f46e5; }
+    .fb-reset-icon {
+      background: none; border: none; cursor: pointer; padding: 0 1px;
+      font-size: 13px; color: #4f46e5; line-height: 1; display: none;
+      flex-shrink: 0; opacity: 0.8;
+    }
+    .fb-reset-icon:hover { opacity: 1; }
+    .fb-toggle-right { display: flex; align-items: center; gap: 5px; }
+    .fb-reset {
+      padding: 3px 9px; border-radius: 6px; border: 1.5px solid rgba(99,102,241,0.18);
+      background: transparent; font-size: 10px; font-weight: 600;
+      color: #94a3b8; cursor: pointer; transition: all 0.15s; white-space: nowrap;
+    }
+    .fb-reset:hover { border-color: #4f46e5; color: #4f46e5; }
+    .fb-arrow {
+      font-size: 11px; color: #94a3b8; transition: transform 0.2s; line-height: 1;
+    }
+    .fb-arrow.open { transform: rotate(180deg); }
+    .fb-detail {
+      display: none; padding: 0 10px 8px;
+      border-top: 1px solid rgba(99,102,241,0.08);
+    }
+    .fb-detail.open { display: block; }
+    .fb-search {
+      width: 100%; padding: 7px 10px; border-radius: 8px;
+      border: 1.5px solid rgba(99,102,241,0.18); background: rgba(255,255,255,0.80);
+      font-size: 12px; color: #1e293b; outline: none;
+      margin: 8px 0 6px; box-sizing: border-box;
+    }
+    .fb-search:focus { border-color: rgba(99,102,241,0.45); box-shadow: 0 0 0 3px rgba(99,102,241,0.08); }
+    .fb-search::placeholder { color: #cbd5e1; }
+    .fb-row { display: flex; gap: 6px; margin-bottom: 6px; }
+    .fb-select {
+      flex: 1; padding: 5px 28px 5px 8px; border-radius: 8px;
+      border: 1.5px solid rgba(99,102,241,0.20);
+      background: rgba(255,255,255,0.80) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%2394a3b8' d='M6 8L1 3h10z'/%3E%3C/svg%3E") no-repeat right 10px center;
+      font-size: 11px; color: #1e293b; cursor: pointer; outline: none;
+      appearance: none; -webkit-appearance: none;
+    }
+    .fb-select:focus { border-color: #4f46e5; }
+    .fb-cat-dropdown { position: relative; margin-bottom: 6px; }
+    .fb-cat-btn {
+      width: 100%; text-align: left; display: block; cursor: pointer;
+      padding-right: 28px !important;
+    }
+    .fb-cat-list {
+      display: none; position: absolute; top: calc(100% + 3px); left: 0; right: 0;
+      background: rgba(255,255,255,0.97); backdrop-filter: blur(8px);
+      border: 1.5px solid rgba(99,102,241,0.20); border-radius: 8px;
+      box-shadow: 0 4px 16px rgba(15,23,42,0.10);
+      max-height: 160px; overflow-y: auto; z-index: 50; padding: 4px 0;
+    }
+    .fb-cat-list.open { display: block; }
+    .fb-cat-item {
+      display: flex; align-items: center; gap: 8px;
+      padding: 6px 12px; font-size: 11px; color: #1e293b; cursor: pointer;
+    }
+    .fb-cat-item:hover { background: rgba(79,70,229,0.05); }
+    .fb-cat-item input { accent-color: #4f46e5; cursor: pointer; }
+    .fb-cat-item.selected { color: #4f46e5; font-weight: 600; }
+    .fb-chips { display: flex; gap: 5px; }
+    .fb-chip {
+      flex: 1; padding: 4px 0; border-radius: 20px; border: 1.5px solid rgba(99,102,241,0.20);
+      background: rgba(255,255,255,0.70); font-size: 11px; font-weight: 600;
+      color: #64748b; cursor: pointer; transition: all 0.15s;
+    }
+    .fb-chip:hover { border-color: rgba(99,102,241,0.50); color: #4f46e5; }
+    .fb-chip.active { background: rgba(79,70,229,0.10); border-color: #4f46e5; color: #4f46e5; }
+
+    .list-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 6px 4px 8px;
+    }
+    .place-count { font-size: 11px; color: #94a3b8; font-weight: 500; }
+
+    /* ── 장소 카드 ── */
+    .place-card {
+      background: rgba(255,255,255,0.72);
+      border: 1px solid rgba(255,255,255,0.55);
+      box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+      border-radius: 12px;
+      margin-bottom: 8px;
+      overflow: hidden;
+    }
+
+    .pc-body { padding: 12px 12px 0; position: relative; }
+
+    /* 카드 헤더 행: 가게명 + 삭제 */
+    .pc-title-row {
+      display: flex; align-items: flex-start;
+      justify-content: space-between; gap: 6px;
+      margin-bottom: 5px;
+    }
+    .pc-name { font-size: 13px; font-weight: 700; color: #1e293b; line-height: 1.3; }
+
+    .btn-card-del {
+      background: transparent; color: #cbd5e1; border: none;
+      font-size: 12px; cursor: pointer; padding: 1px 4px;
+      border-radius: 4px; transition: all 0.15s; flex-shrink: 0;
+    }
+    .btn-card-del:hover { background: rgba(239,68,68,0.1); color: #ef4444; }
+
+    /* 배지 행 */
+    .pc-badges { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 7px; }
+    .tag {
+      display: inline-block;
+      background: rgba(99,102,241,0.08); color: #6d28d9;
+      border-radius: 5px; padding: 2px 8px;
+      font-size: 10px; font-weight: 600;
+    }
+    .tag-meal { background: rgba(20,184,166,0.10); color: #0d9488; }
+
+    /* 정보 행 */
+    .pc-info { font-size: 11px; color: #64748b; line-height: 1.9; margin-bottom: 8px; }
+    .pc-info a { color: #4f46e5; font-weight: 600; text-decoration: none; }
+    .pc-info a:hover { text-decoration: underline; }
+    .pc-dist { color: #94a3b8; font-weight: 500; }
+
+    /* 통합 별점 블록 */
+    .pc-rating-block {
+      display: flex; align-items: center;
+      border-top: 1px solid rgba(99,102,241,0.08);
+      padding: 9px 12px;
+      cursor: pointer;
+      transition: background 0.12s;
+      user-select: none;
+    }
+    .pc-rating-block:hover { background: rgba(99,102,241,0.04); }
+    .pc-stars { color: #f59e0b; font-size: 13px; letter-spacing: 1px; margin-right: 6px; }
+    .pc-rating-num { font-size: 13px; font-weight: 700; color: #1e293b; margin-right: 4px; }
+    .pc-rating-cnt { font-size: 11px; color: #94a3b8; }
+    .pc-no-rating  { font-size: 11px; color: #cbd5e1; }
+    .pc-toggle-icon {
+      margin-left: auto; font-size: 16px; color: #94a3b8;
+      transition: transform 0.2s; line-height: 1;
+    }
+    .pc-toggle-icon.open { transform: rotate(180deg); }
+
+    /* 리뷰 패널 */
+    .review-panel {
+      background: rgba(248,247,255,0.65);
+      max-height: 0; overflow: hidden;
+      transition: max-height 0.3s ease;
+    }
+    .review-panel.open { max-height: 600px; overflow-y: auto; }
+    .review-panel::-webkit-scrollbar { width: 3px; }
+    .review-panel::-webkit-scrollbar-thumb { background: rgba(99,102,241,0.2); border-radius: 2px; }
+
+    .review-item {
+      padding: 10px 12px;
+      border-bottom: 1px solid rgba(99,102,241,0.06);
+    }
+    .review-item:last-child { border-bottom: none; }
+    .review-meta-row { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
+    .review-name { font-size: 12px; font-weight: 600; color: #334155; }
+    .review-dept {
+      font-size: 10px; font-weight: 600;
+      background: rgba(99,102,241,0.08); color: #6d28d9;
+      padding: 1px 7px; border-radius: 20px;
+    }
+    .review-date { font-size: 10px; color: #94a3b8; margin-left: auto; }
+    .review-text { font-size: 12px; color: #475569; line-height: 1.55; }
+
+    .empty-review { padding: 12px; font-size: 11px; color: #94a3b8; text-align: center; }
+
+    /* 후기 추가 버튼 */
+    .btn-add-review {
+      display: block; width: 100%;
+      padding: 9px; text-align: center;
+      font-size: 12px; font-weight: 600; color: #6d28d9;
+      background: rgba(99,102,241,0.05);
+      border: none; border-top: 1px solid rgba(99,102,241,0.08);
+      cursor: pointer; transition: background 0.12s;
+    }
+    .btn-add-review:hover { background: rgba(99,102,241,0.10); }
+
+    /* 인라인 후기 폼 */
+    .inline-review-form {
+      padding: 12px;
+      border-top: 1px solid rgba(99,102,241,0.08);
+      background: rgba(248,247,255,0.7);
+      display: none;
+    }
+    .inline-review-form.open { display: block; }
+    .irf-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 8px; }
+    .irf-label { font-size: 10px; font-weight: 700; color: #64748b; margin-bottom: 3px; text-transform: uppercase; letter-spacing: 0.04em; }
+    .irf-input {
+      background: rgba(255,255,255,0.85); border: 1px solid rgba(255,255,255,0.6);
+      border-radius: 7px; color: #1e293b; font-size: 12px; padding: 7px 9px;
+      width: 100%; outline: none; font-family: inherit;
+      transition: border-color 0.15s;
+    }
+    .irf-input:focus { border-color: rgba(99,102,241,0.45); }
+    .irf-input::placeholder { color: #cbd5e1; }
+    .irf-textarea { height: 52px; resize: none; }
+    .irf-star-row { display: flex; gap: 4px; align-items: center; margin-bottom: 8px; }
+    .irf-star { font-size: 20px; cursor: pointer; color: #e2e8f0; transition: color 0.1s; user-select: none; }
+    .irf-star.on { color: #f59e0b; }
+    .irf-btn-row { display: flex; gap: 6px; }
+    .irf-submit {
+      flex: 1; padding: 8px; font-size: 12px; font-weight: 700;
+      background: linear-gradient(135deg,#6d28d9,#4f46e5); color: #fff;
+      border: none; border-radius: 8px; cursor: pointer;
+      box-shadow: 0 2px 6px rgba(99,102,241,0.25); transition: opacity 0.15s;
+    }
+    .irf-submit:hover { opacity: 0.88; }
+    .irf-cancel {
+      padding: 8px 12px; font-size: 12px; font-weight: 600;
+      background: rgba(255,255,255,0.8); color: #64748b;
+      border: 1px solid rgba(255,255,255,0.6); border-radius: 8px; cursor: pointer;
+      transition: background 0.12s;
+    }
+    .irf-cancel:hover { background: rgba(255,255,255,1); }
+
+    /* ── 추가 탭 ── */
+    #tab-add {
+      overflow-y: auto;
+      padding: 14px 14px 20px;
+    }
+    #tab-add::-webkit-scrollbar { width: 3px; }
+    #tab-add::-webkit-scrollbar-thumb { background: rgba(99,102,241,0.2); border-radius: 2px; }
+
+    .btn-xs:hover { opacity: 0.88; }
+
+    /* 섹션 헤더 */
+    .section-label {
+      font-size: 10px;
+      font-weight: 700;
+      color: #6d28d9;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+    .section-label::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: rgba(99,102,241,0.15);
+    }
+
+    /* 검색 */
+    .search-wrap {
+      position: relative;
+      margin-bottom: 8px;
+    }
+    .search-input-row {
+      display: flex;
+      gap: 6px;
+    }
+    .search-input-row input {
+      flex: 1;
+      background: rgba(255,255,255,0.85);
+      border: 1px solid rgba(255,255,255,0.6);
+      box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+      border-radius: 8px;
+      color: #1e293b;
+      font-size: 13px;
+      padding: 9px 12px;
+      outline: none;
+      font-family: inherit;
+      transition: border-color 0.15s, box-shadow 0.15s;
+    }
+    .search-input-row input:focus {
+      border-color: rgba(99,102,241,0.45);
+      box-shadow: 0 0 0 3px rgba(99,102,241,0.10);
+    }
+    .search-input-row input::placeholder { color: #cbd5e1; }
+
+    /* 검색 결과 드롭다운 */
+    #search-results {
+      position: absolute;
+      top: calc(100% + 4px);
+      left: 0; right: 0;
+      background: rgba(255,255,255,0.96);
+      backdrop-filter: blur(16px);
+      border: 1px solid rgba(99,102,241,0.15);
+      box-shadow: 0 8px 24px rgba(0,0,0,0.10);
+      border-radius: 10px;
+      z-index: 100;
+      max-height: 220px;
+      overflow-y: auto;
+      display: none;
+    }
+    #search-results.show { display: block; }
+    #search-results::-webkit-scrollbar { width: 3px; }
+    #search-results::-webkit-scrollbar-thumb { background: rgba(99,102,241,0.2); border-radius: 2px; }
+
+    .search-result-item {
+      padding: 9px 12px;
+      cursor: pointer;
+      border-bottom: 1px solid rgba(99,102,241,0.06);
+      transition: background 0.12s;
+    }
+    .search-result-item:last-child { border-bottom: none; }
+    .search-result-item:hover { background: rgba(99,102,241,0.05); }
+    .sri-name { font-size: 12px; font-weight: 600; color: #1e293b; }
+    .sri-addr { font-size: 11px; color: #64748b; margin-top: 2px; }
+    .sri-cat  { font-size: 10px; color: #6d28d9; font-weight: 600; }
+    .search-no-result { padding: 12px; text-align: center; font-size: 12px; color: #94a3b8; }
+
+    /* 선택된 장소 카드 */
+    #selected-place-info {
+      background: rgba(99,102,241,0.05);
+      border: 1.5px solid rgba(99,102,241,0.20);
+      border-radius: 10px;
+      padding: 10px 12px;
+      margin-bottom: 14px;
+      display: none;
+    }
+    #selected-place-info.show { display: block; }
+    .spi-name { font-size: 14px; font-weight: 700; color: #3730a3; margin-bottom: 5px; }
+    .spi-row  { font-size: 11px; color: #475569; line-height: 1.9; }
+    .spi-link { font-size: 11px; color: #4f46e5; font-weight: 600; text-decoration: none; }
+    .spi-link:hover { text-decoration: underline; }
+    .spi-clear {
+      float: right;
+      font-size: 10px;
+      color: #94a3b8;
+      cursor: pointer;
+      background: none;
+      border: none;
+      padding: 0;
+    }
+    .spi-clear:hover { color: #ef4444; }
+
+    /* 폼 공통 */
+    .form-field { margin-bottom: 10px; }
+    .form-label {
+      font-size: 10px;
+      font-weight: 700;
+      color: #64748b;
+      margin-bottom: 4px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .req { color: #e11d48; font-size: 9px; }
+
+    .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 10px; }
+
+    input.fi, textarea.fi, select.fi {
+      background: rgba(255,255,255,0.80);
+      border: 1px solid rgba(255,255,255,0.6);
+      box-shadow: 0 1px 4px rgba(0,0,0,0.05);
+      border-radius: 8px;
+      color: #1e293b;
+      font-size: 12px;
+      padding: 8px 10px;
+      width: 100%;
+      outline: none;
+      font-family: inherit;
+      transition: border-color 0.15s, box-shadow 0.15s;
+    }
+    input.fi:focus, textarea.fi:focus, select.fi:focus {
+      border-color: rgba(99,102,241,0.45);
+      box-shadow: 0 0 0 3px rgba(99,102,241,0.10);
+    }
+    input.fi::placeholder, textarea.fi::placeholder { color: #cbd5e1; }
+    select.fi {
+      appearance: none; -webkit-appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%2394a3b8' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 10px center;
+      padding-right: 28px;
+      cursor: pointer;
+    }
+    input.fi[readonly] { background: rgba(241,245,249,0.8); color: #64748b; cursor: default; }
+    textarea.fi { resize: none; height: 60px; }
+
+    /* 별점 */
+    .star-row { display: flex; gap: 6px; align-items: center; }
+    .star {
+      font-size: 22px;
+      cursor: pointer;
+      color: #e2e8f0;
+      transition: color 0.1s, transform 0.1s;
+      user-select: none;
+      line-height: 1;
+    }
+    .star.on    { color: #f59e0b; }
+    .star:hover { transform: scale(1.15); }
+    .star-val   { font-size: 12px; color: #94a3b8; margin-left: 4px; }
+
+    /* 점심/저녁 체크 */
+    .meal-row { display: flex; gap: 8px; }
+    .meal-chip {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      padding: 6px 12px;
+      border-radius: 20px;
+      border: 1.5px solid rgba(99,102,241,0.20);
+      background: rgba(255,255,255,0.75);
+      font-size: 12px;
+      font-weight: 600;
+      color: #64748b;
+      cursor: pointer;
+      transition: all 0.15s;
+      user-select: none;
+    }
+    .meal-chip input { display: none; }
+    .meal-chip.checked {
+      background: rgba(20,184,166,0.10);
+      border-color: #0d9488;
+      color: #0d9488;
+    }
+
+    /* 선택 옵션 접기/펼치기 */
+    .optional-toggle {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 11px;
+      font-weight: 600;
+      color: #94a3b8;
+      cursor: pointer;
+      margin: 12px 0 8px;
+      user-select: none;
+    }
+    .optional-toggle:hover { color: #6d28d9; }
+    .optional-arrow { transition: transform 0.2s; font-size: 9px; }
+    .optional-arrow.open { transform: rotate(90deg); }
+
+    #optional-fields { display: none; }
+    #optional-fields.open { display: block; }
+
+    /* 버튼 */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 9px 16px;
+      border-radius: 9px;
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+      border: none;
+      transition: all 0.15s;
+    }
+    .btn-primary {
+      background: linear-gradient(135deg, #6d28d9, #4f46e5);
+      color: #fff;
+      box-shadow: 0 2px 8px rgba(99,102,241,0.30);
+      width: 100%;
+      justify-content: center;
+      font-size: 13px;
+      padding: 11px;
+      margin-top: 14px;
+    }
+    .btn-primary:hover { opacity: 0.90; transform: translateY(-1px); box-shadow: 0 4px 12px rgba(99,102,241,0.40); }
+    .btn-primary:disabled { opacity: 0.45; cursor: default; transform: none; }
+
+    .btn-search {
+      background: linear-gradient(135deg, #6d28d9, #4f46e5);
+      color: #fff;
+      box-shadow: 0 2px 8px rgba(99,102,241,0.25);
+      padding: 9px 14px;
+      border-radius: 8px;
+      font-size: 12px;
+      font-weight: 600;
+      border: none;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: all 0.15s;
+    }
+    .btn-search:hover { opacity: 0.88; }
+
+    /* 구분선 */
+    .divider { height: 1px; background: rgba(99,102,241,0.10); margin: 14px 0; }
+
+    /* Excel 업로드 (목록 탭 하단) */
+    .upload-zone {
+      margin: 8px 10px;
+      border: 1.5px dashed rgba(99,102,241,0.22);
+      border-radius: 10px;
+      padding: 10px;
+      text-align: center;
+      font-size: 11px;
+      color: #94a3b8;
+      cursor: pointer;
+      background: rgba(99,102,241,0.02);
+      transition: all 0.15s;
+    }
+    .upload-zone:hover { border-color: rgba(99,102,241,0.5); color: #6d28d9; background: rgba(99,102,241,0.05); }
+    #excel-input { display: none; }
+
+    /* 빈 상태 */
+    .empty-hint { text-align: center; color: #cbd5e1; font-size: 12px; padding: 28px 8px; }
+    .empty-hint .icon { font-size: 28px; margin-bottom: 8px; }
+
+    /* ── 메인 채팅 ── */
+    #main { flex: 1; display: flex; flex-direction: column; overflow: hidden; order: 1; }
+
+    header {
+      padding: 14px 20px;
+      background: rgba(255,255,255,0.68);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border-bottom: 1px solid rgba(255,255,255,0.50);
+      box-shadow: 0 2px 12px rgba(99,102,241,0.07);
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .logo {
+      width: 36px; height: 36px;
+      background: linear-gradient(135deg, #6d28d9, #4f46e5);
+      border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 18px;
+      box-shadow: 0 3px 10px rgba(99,102,241,0.30);
+    }
+    header h1 { font-size: 15px; font-weight: 700; color: #4f46e5; }
+    header p  { font-size: 11px; color: #94a3b8; margin-top: 1px; }
+    /* 대시보드 토글 탭 */
+    #dashboard-toggle {
+      position: absolute;
+      left: -28px;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 28px;
+      height: 64px;
+      display: flex; align-items: center; justify-content: center;
+      background: rgba(255,255,255,0.75);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid rgba(255,255,255,0.5);
+      border-right: none;
+      border-radius: 10px 0 0 10px;
+      box-shadow: -3px 0 12px rgba(99,102,241,0.10);
+      color: #6d28d9;
+      font-size: 13px;
+      cursor: pointer;
+      transition: background 0.15s, box-shadow 0.15s;
+      z-index: 10;
+    }
+    #dashboard-toggle:hover {
+      background: rgba(255,255,255,0.95);
+      box-shadow: -4px 0 16px rgba(99,102,241,0.18);
+    }
+    #dashboard-toggle .toggle-arrow { transition: transform 0.25s; line-height: 1; }
+
+    /* 대시보드 숨김 */
+    #sidebar.collapsed { display: none; }
+
+    /* 반응형: 900px 이하에서 대시보드 자동 숨김 */
+    @media (max-width: 900px) {
+      #sidebar { display: none; overflow: visible; }
+      #sidebar.force-show {
+        display: flex;
+        position: fixed; top: 0; right: 0; bottom: 0;
+        width: 320px; min-width: 320px;
+        z-index: 200;
+        box-shadow: -4px 0 24px rgba(99,102,241,0.15);
+      }
+      #sidebar.force-show ~ #sidebar-overlay { display: block; }
+    }
+
+    /* 모바일 오버레이 — 사이드바 열릴 때만 표시 */
+    #sidebar-overlay {
+      display: none;
+      position: fixed; inset: 0;
+      background: rgba(15,15,26,0.30);
+      backdrop-filter: blur(2px);
+      -webkit-backdrop-filter: blur(2px);
+      z-index: 199;
+    }
+
+    #messages {
+      flex: 1; overflow-y: auto;
+      padding: 20px 18px;
+      display: flex; flex-direction: column; gap: 14px;
+      scroll-behavior: smooth;
+    }
+    #messages::-webkit-scrollbar { width: 4px; }
+    #messages::-webkit-scrollbar-thumb { background: rgba(99,102,241,0.15); border-radius: 2px; }
+
+    .msg { display: flex; gap: 8px; max-width: 88%; animation: fadeIn 0.22s ease; }
+    @keyframes fadeIn { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:none; } }
+    .msg.user { align-self: flex-end; flex-direction: row-reverse; }
+    .msg.bot  { align-self: flex-start; }
+
+    .avatar {
+      width: 30px; height: 30px;
+      border-radius: 9px; flex-shrink: 0;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 14px;
+    }
+    .msg.user .avatar { background: linear-gradient(135deg,#6d28d9,#4f46e5); box-shadow: 0 2px 8px rgba(99,102,241,0.30); }
+    .msg.bot  .avatar { background: rgba(255,255,255,0.80); border: 1px solid rgba(255,255,255,0.6); box-shadow: 0 1px 6px rgba(0,0,0,0.07); }
+
+    .bubble {
+      padding: 11px 15px;
+      border-radius: 14px;
+      font-size: 13px; line-height: 1.7;
+      word-break: break-word; white-space: pre-wrap;
+    }
+    .msg.user .bubble {
+      background: linear-gradient(135deg,#6d28d9,#4f46e5);
+      color: #fff; border-bottom-right-radius: 4px;
+      box-shadow: 0 3px 12px rgba(99,102,241,0.28);
+    }
+    .msg.bot .bubble {
+      background: rgba(255,255,255,0.72);
+      backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+      border: 1px solid rgba(255,255,255,0.55);
+      color: #1e293b; border-bottom-left-radius: 4px;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+    }
+    .error .bubble { background: rgba(254,226,226,0.75); color: #dc2626; border: 1px solid rgba(252,165,165,0.4); }
+
+    .typing .bubble { display: flex; gap: 4px; align-items: center; padding: 13px 16px; }
+    .dot { width: 6px; height: 6px; background: #a5b4fc; border-radius: 50%; animation: bounce 1.2s infinite; }
+    .dot:nth-child(2) { animation-delay: 0.2s; }
+    .dot:nth-child(3) { animation-delay: 0.4s; }
+    @keyframes bounce { 0%,80%,100%{transform:translateY(0)} 40%{transform:translateY(-5px)} }
+
+    #input-area {
+      padding: 12px 16px;
+      background: rgba(255,255,255,0.68);
+      backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+      border-top: 1px solid rgba(255,255,255,0.50);
+      box-shadow: 0 -2px 12px rgba(99,102,241,0.05);
+      display: flex; gap: 8px; align-items: flex-end;
+    }
+    #user-input {
+      flex: 1;
+      background: rgba(255,255,255,0.80);
+      border: 1px solid rgba(255,255,255,0.6);
+      border-radius: 12px; color: #1e293b;
+      font-size: 13px; padding: 10px 14px;
+      resize: none; outline: none;
+      max-height: 100px; line-height: 1.55;
+      font-family: inherit;
+      box-shadow: 0 1px 6px rgba(0,0,0,0.06);
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    #user-input:focus { border-color: rgba(99,102,241,0.45); box-shadow: 0 0 0 3px rgba(99,102,241,0.10); }
+    #user-input::placeholder { color: #cbd5e1; }
+
+    #send-btn {
+      width: 40px; height: 40px;
+      background: linear-gradient(135deg,#6d28d9,#4f46e5);
+      border: none; border-radius: 11px;
+      cursor: pointer; display: flex; align-items: center; justify-content: center;
+      box-shadow: 0 3px 10px rgba(99,102,241,0.35);
+      transition: all 0.15s; flex-shrink: 0;
+    }
+    #send-btn:hover { transform: translateY(-1px); box-shadow: 0 5px 14px rgba(99,102,241,0.45); }
+    #send-btn:active { transform: scale(0.93); }
+    #send-btn:disabled { background: #e2e8f0; box-shadow: none; cursor: default; }
+    #send-btn svg { width: 16px; height: 16px; fill: white; }
+    #send-btn:disabled svg { fill: #94a3b8; }
+
+    /* 토스트 */
+    #toast {
+      position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+      background: rgba(30,41,59,0.92); color: #fff;
+      padding: 10px 20px; border-radius: 20px;
+      font-size: 13px; font-weight: 500;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+      backdrop-filter: blur(10px);
+      z-index: 999;
+      opacity: 0; transition: opacity 0.2s;
+      pointer-events: none;
+    }
+    #toast.show { opacity: 1; }
+
+    /* ── 엑셀 임포트 리뷰 패널 ── */
+    #import-overlay {
+      display: none;
+      position: fixed; inset: 0;
+      background: rgba(15,15,26,0.45);
+      backdrop-filter: blur(4px);
+      -webkit-backdrop-filter: blur(4px);
+      z-index: 500;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    #import-overlay.show { display: flex; }
+
+    #import-panel {
+      background: rgba(255,255,255,0.95);
+      backdrop-filter: blur(20px);
+      border: 1px solid rgba(255,255,255,0.6);
+      border-radius: 18px;
+      box-shadow: 0 16px 48px rgba(99,102,241,0.18);
+      width: 100%; max-width: 680px;
+      max-height: 85vh;
+      display: flex; flex-direction: column;
+      overflow: hidden;
+    }
+
+    .ip-header {
+      padding: 18px 20px 14px;
+      border-bottom: 1px solid rgba(99,102,241,0.10);
+      display: flex; align-items: center; gap: 10px;
+    }
+    .ip-header h2 { font-size: 15px; font-weight: 700; color: #3730a3; flex: 1; }
+    .ip-header p  { font-size: 12px; color: #64748b; margin-top: 2px; }
+    .ip-close {
+      background: none; border: none; font-size: 18px;
+      color: #94a3b8; cursor: pointer; padding: 2px 6px;
+      border-radius: 6px; transition: all 0.12s;
+    }
+    .ip-close:hover { background: rgba(239,68,68,0.1); color: #ef4444; }
+
+    /* 진행 바 */
+    .ip-progress-wrap {
+      padding: 14px 20px;
+      border-bottom: 1px solid rgba(99,102,241,0.08);
+    }
+    .ip-progress-label {
+      font-size: 12px; color: #475569; margin-bottom: 6px;
+      display: flex; justify-content: space-between;
+    }
+    .ip-progress-bar {
+      height: 6px; background: #e2e8f0; border-radius: 3px; overflow: hidden;
+    }
+    .ip-progress-fill {
+      height: 100%; background: linear-gradient(90deg, #6d28d9, #4f46e5);
+      border-radius: 3px; transition: width 0.3s ease;
+      width: 0%;
+    }
+
+    /* 요약 배지 */
+    .ip-summary {
+      padding: 12px 20px;
+      display: flex; gap: 8px; flex-wrap: wrap;
+      border-bottom: 1px solid rgba(99,102,241,0.08);
+    }
+    .ip-badge {
+      display: flex; align-items: center; gap: 5px;
+      padding: 5px 12px; border-radius: 20px;
+      font-size: 11px; font-weight: 700;
+    }
+    .ip-badge.ok     { background: rgba(16,185,129,0.10); color: #059669; }
+    .ip-badge.warn   { background: rgba(245,158,11,0.10); color: #d97706; }
+    .ip-badge.dup    { background: rgba(99,102,241,0.10); color: #4f46e5; }
+    .ip-badge.err    { background: rgba(239,68,68,0.10);  color: #dc2626; }
+
+    /* 결과 목록 */
+    .ip-list { flex: 1; overflow-y: auto; padding: 8px 12px; }
+    .ip-list::-webkit-scrollbar { width: 3px; }
+    .ip-list::-webkit-scrollbar-thumb { background: rgba(99,102,241,0.2); border-radius: 2px; }
+
+    .ip-row {
+      display: flex; align-items: flex-start; gap: 10px;
+      padding: 10px 8px; border-radius: 10px;
+      border-bottom: 1px solid rgba(99,102,241,0.06);
+      transition: background 0.12s;
+    }
+    .ip-row:last-child { border-bottom: none; }
+    .ip-row.excluded { opacity: 0.45; }
+
+    .ip-status { font-size: 14px; flex-shrink: 0; margin-top: 1px; }
+    .ip-row-info { flex: 1; min-width: 0; }
+    .ip-row-name { font-size: 13px; font-weight: 600; color: #1e293b; }
+    .ip-row-detail { font-size: 11px; color: #64748b; margin-top: 3px; line-height: 1.6; }
+    .ip-row-error      { font-size: 11px; color: #dc2626; margin-top: 3px; }
+    .ip-row-error.dup  { color: #4f46e5; }
+
+    /* 복수 결과 선택 드롭다운 */
+    .ip-select {
+      font-size: 11px; margin-top: 5px;
+      background: rgba(255,255,255,0.9);
+      border: 1px solid rgba(99,102,241,0.2);
+      border-radius: 6px; padding: 4px 8px;
+      color: #1e293b; outline: none; width: 100%;
+      cursor: pointer;
+    }
+
+    /* 체크박스 */
+    .ip-checkbox-wrap {
+      display: flex; align-items: flex-start; flex-shrink: 0; padding-top: 2px;
+    }
+    .ip-checkbox {
+      width: 18px; height: 18px; cursor: pointer; accent-color: #4f46e5;
+      flex-shrink: 0;
+    }
+
+    /* 인라인 식사 시간대 선택 */
+    .ip-meal-select { display: flex; align-items: center; gap: 6px; margin-top: 6px; flex-wrap: wrap; }
+    .ip-meal-select-label {
+      font-size: 10px; font-weight: 700; color: #f59e0b;
+      display: flex; align-items: center; gap: 3px;
+      white-space: nowrap;
+    }
+    /* 미선택: tag-meal과 동일 형태지만 dashed 테두리 + 흐린 색상 → 선택 유도 */
+    .ip-meal-chip {
+      display: inline-flex; align-items: center; gap: 3px;
+      padding: 2px 8px; border-radius: 5px; cursor: pointer;
+      font-size: 10px; font-weight: 600;
+      border: 1.5px dashed rgba(20,184,166,0.40);
+      background: rgba(20,184,166,0.04); color: rgba(13,148,136,0.5);
+      user-select: none; transition: all 0.15s;
+    }
+    .ip-meal-chip:hover {
+      border-color: rgba(20,184,166,0.70);
+      color: rgba(13,148,136,0.80);
+      background: rgba(20,184,166,0.07);
+    }
+    /* 선택됨: tag-meal 과 동일 */
+    .ip-meal-chip.checked {
+      background: rgba(20,184,166,0.10);
+      border: 1.5px solid #0d9488;
+      color: #0d9488;
+    }
+
+    /* 하단 버튼 */
+    .ip-footer {
+      padding: 14px 20px;
+      border-top: 1px solid rgba(99,102,241,0.10);
+      display: flex; gap: 8px; justify-content: flex-end;
+      background: rgba(248,247,255,0.6);
+    }
+    .ip-btn-cancel {
+      padding: 9px 18px; font-size: 13px; font-weight: 600;
+      background: rgba(255,255,255,0.8); color: #64748b;
+      border: 1px solid rgba(99,102,241,0.15); border-radius: 9px;
+      cursor: pointer; transition: all 0.12s;
+    }
+    .ip-btn-cancel:hover { background: #fff; }
+    .ip-btn-confirm {
+      padding: 9px 20px; font-size: 13px; font-weight: 700;
+      background: linear-gradient(135deg,#6d28d9,#4f46e5); color: #fff;
+      border: none; border-radius: 9px; cursor: pointer;
+      box-shadow: 0 2px 8px rgba(99,102,241,0.30); transition: all 0.12s;
+    }
+    .ip-btn-confirm:hover { opacity: 0.88; }
+    .ip-btn-confirm:disabled { opacity: 0.4; cursor: default; }
+
+    /* ── 투표 ── */
+    .poll-backdrop {
+      display: none; position: fixed; inset: 0; z-index: 200;
+      background: rgba(15,23,42,0.45); backdrop-filter: blur(4px);
+      align-items: center; justify-content: center;
+    }
+    .poll-backdrop.show { display: flex; }
+    .poll-panel {
+      background: rgba(255,255,255,0.94); backdrop-filter: blur(20px);
+      border: 1px solid rgba(255,255,255,0.7);
+      border-radius: 18px; box-shadow: 0 20px 60px rgba(15,23,42,0.18);
+      width: 460px; max-width: calc(100vw - 32px);
+      max-height: 82vh; display: flex; flex-direction: column;
+    }
+    .poll-ph {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 18px 20px 14px; border-bottom: 1px solid rgba(99,102,241,0.10);
+      font-size: 15px; font-weight: 700; color: #1e293b; flex-shrink: 0;
+    }
+    .poll-ph button { background:none; border:none; cursor:pointer; font-size:16px; color:#94a3b8; padding:2px 6px; border-radius:6px; }
+    .poll-ph button:hover { background:rgba(0,0,0,0.06); }
+    .poll-pb { flex:1; overflow-y:auto; padding:14px 20px; }
+    .poll-pb::-webkit-scrollbar { width:3px; }
+    .poll-pb::-webkit-scrollbar-thumb { background:rgba(99,102,241,0.2); border-radius:2px; }
+    .poll-hint { font-size:12px; color:#64748b; margin-bottom:12px; }
+    .poll-pf { padding:12px 20px 16px; border-top:1px solid rgba(99,102,241,0.08); flex-shrink:0; }
+    .poll-opt {
+      display:flex; align-items:center; gap:10px;
+      padding:10px 12px; border-radius:10px; margin-bottom:6px;
+      border:1.5px solid rgba(99,102,241,0.12); background:rgba(255,255,255,0.7);
+      cursor:pointer; transition:all 0.15s; user-select:none;
+    }
+    .poll-opt:hover { border-color:rgba(99,102,241,0.35); background:rgba(79,70,229,0.04); }
+    .poll-opt.selected { border-color:#4f46e5; background:rgba(79,70,229,0.07); }
+    .poll-opt input[type=checkbox] { accent-color:#4f46e5; width:15px; height:15px; flex-shrink:0; }
+    .poll-opt-name { font-size:13px; font-weight:600; color:#1e293b; }
+    .poll-opt-meta { font-size:11px; color:#94a3b8; margin-top:1px; }
+    .poll-link-box {
+      margin:0 20px 12px; padding:12px 14px;
+      background:rgba(79,70,229,0.06); border:1.5px solid rgba(79,70,229,0.20); border-radius:12px;
+    }
+    .poll-link-label { font-size:12px; font-weight:600; color:#4f46e5; margin-bottom:8px; }
+    .poll-link-row { display:flex; gap:6px; }
+    .poll-link-input {
+      flex:1; padding:7px 10px; border-radius:8px;
+      border:1px solid rgba(99,102,241,0.25); background:rgba(255,255,255,0.9);
+      font-size:11px; color:#475569; outline:none;
+    }
+    .poll-copy-btn {
+      padding:7px 14px; border-radius:8px; border:none;
+      background:#4f46e5; color:#fff; font-size:12px; font-weight:600; cursor:pointer;
+    }
+    .poll-copy-btn:hover { background:#4338ca; }
+    .poll-action-btn {
+      width:100%; padding:10px; border-radius:10px; border:none;
+      background:linear-gradient(135deg,#4f46e5,#6d28d9);
+      color:#fff; font-size:13px; font-weight:700; cursor:pointer; transition:opacity 0.15s;
+    }
+    .poll-action-btn:disabled { opacity:0.4; cursor:not-allowed; }
+    .poll-action-btn:not(:disabled):hover { opacity:0.88; }
+    .poll-res-item { margin-bottom:10px; }
+    .poll-res-name {
+      font-size:13px; font-weight:600; color:#1e293b;
+      display:flex; justify-content:space-between; margin-bottom:4px;
+    }
+    .poll-res-bar-wrap { height:8px; background:rgba(99,102,241,0.10); border-radius:4px; overflow:hidden; }
+    .poll-res-bar { height:100%; background:linear-gradient(90deg,#4f46e5,#6d28d9); border-radius:4px; transition:width 0.4s; }
+    .poll-current-wrap {
+      margin-top:14px; padding:12px 14px;
+      background:rgba(99,102,241,0.04); border:1px solid rgba(99,102,241,0.10); border-radius:10px;
+    }
+    .poll-current-label {
+      font-size:11px; font-weight:700; color:#64748b;
+      display:flex; align-items:center; gap:6px; margin-bottom:10px;
+    }
+    .poll-current-label span { color:#94a3b8; font-weight:400; }
+    .poll-current-item { margin-bottom:8px; }
+    .poll-current-name {
+      font-size:12px; font-weight:600; color:#334155;
+      display:flex; justify-content:space-between; margin-bottom:3px;
+    }
+    .poll-current-bar-wrap { height:6px; background:rgba(99,102,241,0.08); border-radius:3px; overflow:hidden; }
+    .poll-current-bar { height:100%; background:rgba(99,102,241,0.35); border-radius:3px; transition:width 0.4s; }
+    #poll-voting-overlay {
+      display:none; position:fixed; inset:0; z-index:300;
+      background:linear-gradient(135deg,#f0f0f5,#e8e8f0);
+      align-items:center; justify-content:center;
+    }
+    #poll-voting-overlay.show { display:flex; }
+  </style>
+</head>
+<body>
+
+<!-- ── 사이드바 ── -->
+<div id="sidebar">
+  <button id="dashboard-toggle" onclick="toggleDashboard()">
+    <span class="toggle-arrow">▶</span>
+  </button>
+  <div id="sidebar-inner">
+  <div class="sidebar-tabs">
+    <button class="tab-btn active" onclick="switchTab('list')">📋 장소 목록</button>
+    <button class="tab-btn" onclick="switchTab('add')">➕ 장소 추가</button>
+  </div>
+
+  <!-- 목록 탭 -->
+  <div class="tab-panel active" id="tab-list">
+    <div id="filter-bar">
+      <div class="fb-toggle-row" onclick="toggleFilterBar()">
+        <div class="fb-toggle-left">
+          <span class="fb-filter-icon">⊟</span>
+          <span class="fb-title" id="fb-title-text">필터</span>
+          <button class="fb-reset-icon" id="fb-reset-btn" onclick="event.stopPropagation();resetFilters()">↺</button>
+        </div>
+        <div class="fb-toggle-right">
+          <button class="fb-reset" onclick="event.stopPropagation();openPollCreator()" style="color:#4f46e5;border-color:rgba(79,70,229,0.25);">🗳️ 투표</button>
+        </div>
+      </div>
+      <div class="fb-detail" id="fb-detail">
+        <input class="fb-search" id="fb-search" placeholder="가게명, 카테고리, 추천인 검색..." oninput="setSearch(this.value)" />
+        <select class="fb-select" id="fb-sort" onchange="setSort(this.value)" style="width:100%;margin-bottom:6px;">
+          <option value="distance">거리 순</option>
+          <option value="rating" selected>평점 순</option>
+          <option value="reviews">후기 수</option>
+        </select>
+        <div class="fb-cat-dropdown" id="fb-cat-dd">
+          <button class="fb-select fb-cat-btn" id="fb-cat-btn" onclick="toggleCatDropdown(event)">
+            <span id="fb-cat-label">전체 카테고리</span>
+          </button>
+          <div class="fb-cat-list" id="fb-cat-list"></div>
+        </div>
+        <div class="fb-chips" id="fb-meal-chips">
+          <button class="fb-chip active" onclick="setFilter('meal','')">전체</button>
+          <button class="fb-chip" onclick="setFilter('meal','점심')">🌞 점심</button>
+          <button class="fb-chip" onclick="setFilter('meal','저녁')">🌙 저녁</button>
+        </div>
+      </div>
+    </div>
+    <div style="padding: 8px 10px; flex:1; overflow-y:auto;" id="place-list-inner">
+      <div class="empty-hint"><div class="icon">📋</div>아직 등록된 장소가 없습니다.</div>
+    </div>
+    <label class="upload-zone" for="excel-input">
+      📊 Excel 일괄 불러오기 (.xlsx)
+    </label>
+    <input type="file" id="excel-input" accept=".xlsx,.xls" onchange="loadExcel(event)" />
+  </div>
+
+  <!-- 추가 탭 -->
+  <div class="tab-panel" id="tab-add">
+
+    <!-- 가게 검색 -->
+    <div class="section-label">가게 검색</div>
+    <div class="search-wrap">
+      <div class="search-input-row">
+        <input type="text" id="search-input" placeholder="가게명 또는 키워드 검색..." onkeydown="if(event.key==='Enter')doSearch()" />
+        <button class="btn-search" onclick="doSearch()">검색</button>
+      </div>
+      <div id="search-results"></div>
+    </div>
+
+    <!-- 선택된 장소 정보 -->
+    <div id="selected-place-info">
+      <button class="spi-clear" onclick="clearSelectedPlace()">✕ 선택 해제</button>
+      <div class="spi-name" id="spi-name"></div>
+      <div class="spi-row" id="spi-addr"></div>
+      <div class="spi-row" id="spi-cat"></div>
+      <div class="spi-row" id="spi-phone"></div>
+      <div class="spi-row" id="spi-link-wrap"></div>
+    </div>
+
+    <div class="divider"></div>
+
+    <!-- 필수 입력 -->
+    <div class="section-label">필수 입력</div>
+
+    <!-- 추천인 + 소속 -->
+    <div class="form-grid">
+      <div class="form-field">
+        <div class="form-label">추천인 이름 <span class="req">필수</span></div>
+        <input type="text" class="fi" id="f-recommender" placeholder="홍길동" />
+      </div>
+      <div class="form-field">
+        <div class="form-label">소속 (팀/부서) <span class="req">필수</span></div>
+        <input type="text" class="fi" id="f-dept" placeholder="마케팅팀" />
+      </div>
+    </div>
+
+    <!-- 별점 -->
+    <div class="form-field">
+      <div class="form-label">별점 <span class="req">필수</span></div>
+      <div class="star-row" id="star-row">
+        <span class="star" data-v="1" onclick="setRating(1)">★</span>
+        <span class="star" data-v="2" onclick="setRating(2)">★</span>
+        <span class="star" data-v="3" onclick="setRating(3)">★</span>
+        <span class="star" data-v="4" onclick="setRating(4)">★</span>
+        <span class="star" data-v="5" onclick="setRating(5)">★</span>
+        <span class="star-val" id="star-val">선택 안 함</span>
+      </div>
+    </div>
+
+    <!-- 점심/저녁 -->
+    <div class="form-field">
+      <div class="form-label">식사 시간대 <span class="req">필수</span></div>
+      <div class="meal-row">
+        <label class="meal-chip" id="chip-lunch">
+          <input type="checkbox" id="meal-lunch" onchange="toggleMealChip('lunch')" />
+          🌞 점심
+        </label>
+        <label class="meal-chip" id="chip-dinner">
+          <input type="checkbox" id="meal-dinner" onchange="toggleMealChip('dinner')" />
+          🌙 저녁
+        </label>
+      </div>
+    </div>
+
+    <!-- 리뷰 텍스트 -->
+    <div class="form-field">
+      <div class="form-label">리뷰 (선택)</div>
+      <textarea class="fi" id="f-review" placeholder="분위기, 음식 퀄리티, 추천 메뉴 등 자유롭게..."></textarea>
+    </div>
+
+    <!-- 선택 옵션 토글 -->
+    <div class="optional-toggle" onclick="toggleOptional()">
+      <span class="optional-arrow" id="opt-arrow">▶</span>
+      추가 정보 입력 (선택)
+    </div>
+
+    <div id="optional-fields">
+      <div class="section-label">선택 입력</div>
+
+      <div class="form-grid">
+        <div class="form-field">
+          <div class="form-label">최대 인원</div>
+          <input type="number" class="fi" id="f-maxPeople" placeholder="20" min="1" />
+        </div>
+        <div class="form-field">
+          <div class="form-label">1인당 가격 (원)</div>
+          <input type="number" class="fi" id="f-price" placeholder="30000" min="0" />
+        </div>
+      </div>
+      <div class="form-grid">
+        <div class="form-field">
+          <div class="form-label">분위기</div>
+          <input type="text" class="fi" id="f-vibe" placeholder="모던, 캐주얼, 고급스러운..." />
+        </div>
+        <div class="form-field">
+          <div class="form-label">단체 룸 여부</div>
+          <select class="fi" id="f-room">
+            <option value="">선택 안 함</option>
+            <option value="있음">있음</option>
+            <option value="없음">없음</option>
+            <option value="문의 필요">문의 필요</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-field">
+        <div class="form-label">기타 메모</div>
+        <textarea class="fi" id="f-memo" placeholder="단체 할인, 예약 필수, 발렛 가능 등"></textarea>
+      </div>
+    </div>
+
+    <button class="btn btn-primary" onclick="submitPlace()">✓ 장소 등록하기</button>
+  </div>
+  </div><!-- /sidebar-inner -->
+</div>
+
+<!-- ── 메인 채팅 ── -->
+<div id="main">
+  <header>
+    <div class="logo">🍻</div>
+    <div>
+      <h1>회식 장소 추천 AI</h1>
+      <p>등록된 데이터 기반 맞춤 추천</p>
+    </div>
+  </header>
+
+  <div id="messages">
+    <div class="msg bot">
+      <div class="avatar">🤖</div>
+      <div class="bubble">안녕하세요! 회식 장소 추천 AI입니다 😊<br>인원수, 예산, 음식 종류 등을 말씀해 주시면 딱 맞는 장소를 추천해 드릴게요!</div>
+    </div>
+  </div>
+
+  <div id="input-area">
+    <textarea id="user-input" placeholder="예) 10명이서 회식인데 1인당 3만원 예산이에요. 강남 근처 한식 어때요?" rows="1"></textarea>
+    <button id="send-btn" onclick="sendMessage()">
+      <svg viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+    </button>
+  </div>
+</div>
+
+<div id="toast"></div>
+<div id="sidebar-overlay" onclick="toggleDashboard()"></div>
+
+<!-- ── 엑셀 임포트 리뷰 패널 ── -->
+<div id="import-overlay">
+  <div id="import-panel">
+    <div class="ip-header">
+      <div style="flex:1;">
+        <h2>📊 Excel 불러오기 결과</h2>
+        <p id="ip-subtitle">카카오 API로 장소 정보를 조회하고 있습니다...</p>
+      </div>
+      <button class="ip-close" onclick="closeImportPanel()">✕</button>
+    </div>
+    <div class="ip-progress-wrap" id="ip-progress-wrap">
+      <div class="ip-progress-label">
+        <span id="ip-progress-text">처리 중...</span>
+        <span id="ip-progress-pct">0%</span>
+      </div>
+      <div class="ip-progress-bar"><div class="ip-progress-fill" id="ip-progress-fill"></div></div>
+    </div>
+    <div class="ip-summary" id="ip-summary" style="display:none;"></div>
+    <div class="ip-list" id="ip-list"></div>
+    <div class="ip-footer">
+      <button class="ip-btn-cancel" onclick="closeImportPanel()">취소</button>
+      <button class="ip-btn-confirm" id="ip-confirm-btn" onclick="confirmImport()" disabled>등록하기</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  /* ── 상수 ── */
+  const EDGE_FN_URL  = 'https://ofpaimkijmwaielamevl.supabase.co/functions/v1/swift-worker';
+  const MODEL        = 'llama-3.3-70b-versatile';
+  const SUPABASE_URL = 'https://ofpaimkijmwaielamevl.supabase.co';
+  const SUPABASE_KEY = 'sb_publishable_0SISEwqNDfPvcdmp-Ysy4g_gaB-2h9q';
+
+  let sb = null;
+  function initSupabase() {
+    if (!sb && window.supabase) sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+  }
+
+  /* ── 상태 ── */
+  let places  = [];
+  let history = [];
+  let rating  = 0;
+  let selectedKakaoPlace = null;
+  let filterCategories = new Set();
+  let filterMeal       = '';
+  let filterSearch     = '';
+  let sortBy           = 'rating';
+  let filterBarOpen    = false;
+
+  /* ── Kakao API 키 ── */
+  const kakaoKey = '0db32c2d7759ec617ec82dc52eca758e';
+
+  /* 강남대로 372 좌표 — 앱 시작 시 Kakao 주소검색으로 확정 */
+  let baseCoord = { x: '127.0280', y: '37.4956' };
+  (async () => {
+    try {
+      const r = await fetch(
+        'https://dapi.kakao.com/v2/local/search/address.json?query=' + encodeURIComponent('강남대로 372'),
+        { headers: { Authorization: `KakaoAK ${kakaoKey}` } }
+      );
+      const d = await r.json();
+      const doc = d.documents?.[0];
+      if (doc) baseCoord = { x: doc.x, y: doc.y };
+    } catch (_) {}
+  })();
+
+  /* ── 탭 전환 ── */
+  function switchTab(name) {
+    document.querySelectorAll('.tab-btn').forEach((b,i) => b.classList.toggle('active', ['list','add'][i] === name));
+    document.querySelectorAll('.tab-panel').forEach((p,i) => p.classList.toggle('active', ['list','add'][i] === name));
+  }
+
+  /* ── 별점 ── */
+  function setRating(v) {
+    rating = v;
+    document.querySelectorAll('.star').forEach(s => s.classList.toggle('on', +s.dataset.v <= v));
+    document.getElementById('star-val').textContent = v + '점';
+  }
+
+  /* ── 식사 시간대 ── */
+  function toggleMealChip(type) {
+    const chip = document.getElementById('chip-' + type);
+    const cb   = document.getElementById('meal-' + type);
+    chip.classList.toggle('checked', cb.checked);
+  }
+
+  /* ── 선택 옵션 토글 ── */
+  function toggleOptional() {
+    const el  = document.getElementById('optional-fields');
+    const arr = document.getElementById('opt-arrow');
+    el.classList.toggle('open');
+    arr.classList.toggle('open');
+  }
+
+  /* ── Kakao 장소 검색 ── */
+  async function doSearch() {
+    const q = document.getElementById('search-input').value.trim();
+    if (!q) return;
+    if (!kakaoKey) { showToast('Kakao REST API 키를 먼저 저장해주세요.'); return; }
+
+    const res = document.getElementById('search-results');
+    res.innerHTML = '<div class="search-no-result">검색 중...</div>';
+    res.classList.add('show');
+
+    try {
+      const resp = await fetch(
+        `https://dapi.kakao.com/v2/local/search/keyword.json?query=${encodeURIComponent(q)}&size=10&x=${baseCoord.x}&y=${baseCoord.y}&sort=distance`,
+        { headers: { Authorization: `KakaoAK ${kakaoKey}` } }
+      );
+      const data = await resp.json();
+      if (!resp.ok) throw new Error(data.message || '검색 실패');
+      renderSearchResults(data.documents || []);
+    } catch (e) {
+      res.innerHTML = `<div class="search-no-result">오류: ${e.message}</div>`;
+    }
+  }
+
+  function renderSearchResults(docs) {
+    const res = document.getElementById('search-results');
+    if (!docs.length) { res.innerHTML = '<div class="search-no-result">검색 결과가 없습니다.</div>'; return; }
+    res.innerHTML = docs.map((d, i) => {
+      const dist = d.distance ? (d.distance >= 1000
+        ? (d.distance / 1000).toFixed(1) + 'km'
+        : d.distance + 'm') : '';
+      return `
+      <div class="search-result-item" onclick="selectPlace(${i})">
+        <div style="display:flex;align-items:center;justify-content:space-between;">
+          <div class="sri-name">${esc(d.place_name)}</div>
+          ${dist ? `<div style="font-size:10px;color:#94a3b8;font-weight:600;">📍 ${dist}</div>` : ''}
+        </div>
+        <div class="sri-addr">${esc(d.road_address_name || d.address_name)}</div>
+        <div class="sri-cat">${esc(d.category_name)}</div>
+      </div>`;
+    }).join('');
+    res._docs = docs;
+  }
+
+  function selectPlace(i) {
+    const docs = document.getElementById('search-results')._docs;
+    const d    = docs[i];
+    selectedKakaoPlace = {
+      name:     d.place_name,
+      location: d.road_address_name || d.address_name,
+      category: d.category_name.split('>').pop().trim(),
+      phone:    d.phone,
+      kakaoUrl: d.place_url,
+      lat:      d.y,
+      lng:      d.x,
+      kakaoId:  d.id,
+    };
+
+    document.getElementById('spi-name').textContent   = d.place_name;
+    document.getElementById('spi-addr').textContent   = '📍 ' + (d.road_address_name || d.address_name);
+    document.getElementById('spi-cat').textContent    = '🍴 ' + d.category_name;
+    document.getElementById('spi-phone').textContent  = d.phone ? '📞 ' + d.phone : '';
+    document.getElementById('spi-link-wrap').innerHTML = d.place_url
+      ? `<a href="${d.place_url}" target="_blank" class="spi-link">🗺️ 카카오맵에서 보기</a>` : '';
+
+    document.getElementById('selected-place-info').classList.add('show');
+    document.getElementById('search-results').classList.remove('show');
+    document.getElementById('search-input').value = '';
+  }
+
+  function clearSelectedPlace() {
+    selectedKakaoPlace = null;
+    document.getElementById('selected-place-info').classList.remove('show');
+  }
+
+  /* ── 장소 등록 ── */
+  async function submitPlace() {
+    const recommender = document.getElementById('f-recommender').value.trim();
+    const dept        = document.getElementById('f-dept').value.trim();
+    const mealTime    = [];
+    if (document.getElementById('meal-lunch').checked)  mealTime.push('점심');
+    if (document.getElementById('meal-dinner').checked) mealTime.push('저녁');
+
+    if (!recommender)         { showToast('추천인 이름을 입력해주세요.'); return; }
+    if (!dept)                { showToast('소속(팀/부서)을 입력해주세요.'); return; }
+    if (rating === 0)         { showToast('별점을 선택해주세요.'); return; }
+    if (!mealTime.length)     { showToast('점심 또는 저녁을 선택해주세요.'); return; }
+
+    if (!selectedKakaoPlace) { showToast('상단 검색에서 가게를 먼저 선택해주세요.'); return; }
+    const name     = selectedKakaoPlace.name;
+    const location = selectedKakaoPlace.location;
+
+    const review = {
+      recommender, dept, rating, mealTime,
+      text: document.getElementById('f-review').value.trim(),
+      date: new Date().toLocaleDateString('ko-KR'),
+    };
+
+    /* 중복 검사 */
+    const dupIdx = places.findIndex(p => p.name === name && p.location === location);
+    if (dupIdx !== -1) {
+      if (confirm(`"${name}"은(는) 이미 등록된 장소입니다.\n리뷰만 추가할까요?`)) {
+        places[dupIdx].reviews.push(review);
+        const { error } = await sb.from('places').update({ reviews: places[dupIdx].reviews }).eq('id', places[dupIdx].id);
+        if (error) { showToast('저장 실패: ' + error.message); return; }
+        await loadPlaces();
+        switchTab('list');
+        setTimeout(() => openReviewPanel(places.findIndex(p => p.id === places[dupIdx].id)), 100);
+        showToast('리뷰가 추가되었습니다!');
+        resetAddForm();
+      }
+      return;
+    }
+
+    const newPlace = {
+      id: Date.now(),
+      name, location,
+      category: selectedKakaoPlace.category,
+      phone:    selectedKakaoPlace.phone,
+      kakaoUrl: selectedKakaoPlace?.kakaoUrl || '',
+      lat:      selectedKakaoPlace?.lat      || '',
+      lng:      selectedKakaoPlace?.lng      || '',
+      kakaoId:  selectedKakaoPlace?.kakaoId  || '',
+      maxPeople: document.getElementById('f-maxPeople').value || '',
+      price:     document.getElementById('f-price').value     || '',
+      vibe:      document.getElementById('f-vibe').value.trim(),
+      room:      document.getElementById('f-room').value,
+      memo:      document.getElementById('f-memo').value.trim(),
+      reviews:   [review],
+    };
+
+    const { error } = await sb.from('places').insert(placeToRow(newPlace));
+    if (error) { showToast('저장 실패: ' + error.message); return; }
+    await loadPlaces();
+    switchTab('list');
+    showToast(`"${name}" 장소가 등록되었습니다!`);
+    resetAddForm();
+  }
+
+  function resetAddForm() {
+    ['f-recommender','f-dept','f-review','f-vibe','f-memo']
+      .forEach(id => { const el = document.getElementById(id); if(el) el.value = ''; });
+    const roomEl = document.getElementById('f-room'); if(roomEl) roomEl.value = '';
+    ['f-maxPeople','f-price'].forEach(id => { const el = document.getElementById(id); if(el) el.value = ''; });
+    rating = 0;
+    document.querySelectorAll('.star').forEach(s => s.classList.remove('on'));
+    document.getElementById('star-val').textContent = '선택 안 함';
+    document.getElementById('meal-lunch').checked = false;
+    document.getElementById('meal-dinner').checked = false;
+    document.getElementById('chip-lunch').classList.remove('checked');
+    document.getElementById('chip-dinner').classList.remove('checked');
+    clearSelectedPlace();
+    document.getElementById('search-input').value = '';
+  }
+
+  /* ── 장소 목록 렌더 ── */
+  /* ── Supabase ↔ JS 변환 헬퍼 ── */
+  function placeToRow(p) {
+    return {
+      id:         p.id,
+      name:       p.name         || '',
+      location:   p.location     || '',
+      category:   p.category     || '',
+      phone:      p.phone        || '',
+      kakao_url:  p.kakaoUrl     || '',
+      lat:        p.lat          || '',
+      lng:        p.lng          || '',
+      kakao_id:   p.kakaoId      || '',
+      max_people: p.maxPeople    || '',
+      price:      p.price        || '',
+      vibe:       p.vibe         || '',
+      room:       p.room         || '',
+      memo:       p.memo         || '',
+      meal_time:  p.mealTime     || [],
+      reviews:    p.reviews      || [],
+    };
+  }
+
+  function rowToPlace(r) {
+    return {
+      id:         r.id,
+      name:       r.name,
+      location:   r.location,
+      category:   r.category,
+      phone:      r.phone,
+      kakaoUrl:   r.kakao_url,
+      lat:        r.lat,
+      lng:        r.lng,
+      kakaoId:    r.kakao_id,
+      maxPeople:  r.max_people,
+      price:      r.price,
+      vibe:       r.vibe,
+      room:       r.room,
+      memo:       r.memo,
+      mealTime:   r.meal_time  || [],
+      reviews:    r.reviews    || [],
+    };
+  }
+
+  async function loadPlaces() {
+    initSupabase();
+    const { data, error } = await sb.from('places').select('*').order('created_at', { ascending: true });
+    if (!error) places = (data || []).map(rowToPlace);
+    renderPlaceList();
+  }
+
+  function savePlaces() { /* localStorage 대신 Supabase 개별 연산 사용 */ }
+
+  /* 거리 계산 (Haversine) */
+  function calcDistance(lat1, lon1, lat2, lon2) {
+    const R = 6371000;
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const a = Math.sin(dLat/2)**2 +
+              Math.cos(lat1 * Math.PI/180) * Math.cos(lat2 * Math.PI/180) * Math.sin(dLon/2)**2;
+    return Math.round(R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)));
+  }
+
+  function formatDist(m) {
+    return m >= 1000 ? (m / 1000).toFixed(1) + 'km' : m + 'm';
+  }
+
+  function toggleFilterBar() {
+    filterBarOpen = !filterBarOpen;
+    document.getElementById('fb-detail').classList.toggle('open', filterBarOpen);
+  }
+
+  function toggleCatDropdown(e) {
+    e.stopPropagation();
+    document.getElementById('fb-cat-list').classList.toggle('open');
+  }
+
+  function toggleCatFilter(cat) {
+    if (filterCategories.has(cat)) filterCategories.delete(cat);
+    else filterCategories.add(cat);
+    updateCatLabel();
+    updateResetBtn();
+    renderPlaceList();
+  }
+
+  function updateCatLabel() {
+    const label = document.getElementById('fb-cat-label');
+    if (label) label.textContent = filterCategories.size > 0 ? `카테고리 ${filterCategories.size}개 선택` : '전체 카테고리';
+  }
+
+  function setSearch(value) {
+    filterSearch = value.trim().toLowerCase();
+    updateResetBtn();
+    renderPlaceList();
+  }
+
+  function resetFilters() {
+    filterCategories.clear();
+    filterMeal   = '';
+    filterSearch = '';
+    sortBy       = 'rating';
+    const sortSel = document.getElementById('fb-sort');
+    if (sortSel) sortSel.value = 'rating';
+    const searchEl = document.getElementById('fb-search');
+    if (searchEl) searchEl.value = '';
+    document.querySelectorAll('.fb-chip').forEach((c, i) => c.classList.toggle('active', i === 0));
+    updateCatLabel();
+    updateResetBtn();
+    renderPlaceList();
+  }
+
+  function updateResetBtn() {
+    const isActive = filterCategories.size > 0 || filterMeal !== '' || filterSearch !== '';
+    const resetBtn = document.getElementById('fb-reset-btn');
+    const titleEl  = document.getElementById('fb-title-text');
+    if (resetBtn) resetBtn.style.display = isActive ? 'inline' : 'none';
+    if (titleEl)  { titleEl.textContent = isActive ? '조건 선택됨' : '필터'; titleEl.classList.toggle('active', isActive); }
+  }
+
+  function setFilter(type, value) {
+    if (type === 'category') return; // 카테고리는 toggleCatFilter로 처리
+    if (type === 'meal') {
+      filterMeal = value;
+      document.querySelectorAll('.fb-chip').forEach(c => c.classList.remove('active'));
+      const chips = document.querySelectorAll('.fb-chip');
+      const idx = value === '' ? 0 : value === '점심' ? 1 : 2;
+      chips[idx]?.classList.add('active');
+    }
+    updateResetBtn();
+    renderPlaceList();
+  }
+
+  function setSort(value) {
+    sortBy = value;
+    updateResetBtn();
+    renderPlaceList();
+  }
+
+  function getFilteredSorted() {
+    let list = places.map((p, i) => ({ p, i }));
+    if (filterSearch) list = list.filter(({ p }) => {
+      const target = [p.name, p.category, ...p.reviews.map(r => r.recommender)].join(' ').toLowerCase();
+      return target.includes(filterSearch);
+    });
+    if (filterCategories.size > 0) list = list.filter(({ p }) => filterCategories.has(p.category));
+    if (filterMeal) list = list.filter(({ p }) => {
+      const meals = [...new Set([...(p.mealTime || []), ...p.reviews.flatMap(r => r.mealTime || [])])];
+      return meals.includes(filterMeal);
+    });
+    if (sortBy === 'distance') {
+      list.sort((a, b) => {
+        const da = (a.p.lat && a.p.lng) ? calcDistance(+baseCoord.y, +baseCoord.x, +a.p.lat, +a.p.lng) : Infinity;
+        const db = (b.p.lat && b.p.lng) ? calcDistance(+baseCoord.y, +baseCoord.x, +b.p.lat, +b.p.lng) : Infinity;
+        return da - db;
+      });
+    } else if (sortBy === 'rating') {
+      list.sort((a, b) => {
+        const ra = a.p.reviews.length ? a.p.reviews.reduce((s, r) => s + r.rating, 0) / a.p.reviews.length : 0;
+        const rb = b.p.reviews.length ? b.p.reviews.reduce((s, r) => s + r.rating, 0) / b.p.reviews.length : 0;
+        return rb - ra;
+      });
+    } else if (sortBy === 'reviews') {
+      list.sort((a, b) => b.p.reviews.length - a.p.reviews.length);
+    }
+    return list;
+  }
+
+  function renderPlaceList() {
+    const list = document.getElementById('place-list-inner');
+
+    // 카테고리 드롭다운 동기화
+    const cats = [...new Set(places.map(p => p.category).filter(Boolean))].sort();
+    const catList = document.getElementById('fb-cat-list');
+    if (catList) {
+      catList.innerHTML = cats.length
+        ? cats.map(c => `
+          <label class="fb-cat-item${filterCategories.has(c) ? ' selected' : ''}">
+            <input type="checkbox" ${filterCategories.has(c) ? 'checked' : ''} onchange="toggleCatFilter('${c.replace(/'/g, "\\'")}')">
+            ${esc(c)}
+          </label>`).join('')
+        : '<div style="padding:8px 12px;font-size:11px;color:#94a3b8;">카테고리 없음</div>';
+    }
+    updateCatLabel();
+
+    if (!places.length) {
+      list.innerHTML = '<div class="empty-hint"><div class="icon">📋</div>아직 등록된 장소가 없습니다.</div>';
+      return;
+    }
+
+    const filtered = getFilteredSorted();
+    if (!filtered.length) {
+      list.innerHTML = '<div class="empty-hint"><div class="icon">🔍</div>조건에 맞는 장소가 없습니다.</div>';
+      return;
+    }
+
+    list.innerHTML = `<div class="list-header"><span class="place-count">${filtered.length}개 장소${filtered.length < places.length ? ` <span style="color:#94a3b8;font-weight:400;">/ 전체 ${places.length}개</span>` : ''}</span></div>` +
+      filtered.map(({ p, i }) => {
+        const avgRating = p.reviews.length
+          ? (p.reviews.reduce((s,r) => s + r.rating, 0) / p.reviews.length).toFixed(1) : null;
+        const rounded = avgRating ? Math.round(avgRating) : 0;
+        const starsHtml = avgRating
+          ? `<span class="pc-stars">${'★'.repeat(rounded)}${'☆'.repeat(5-rounded)}</span><span class="pc-rating-num">${avgRating}</span><span class="pc-rating-cnt">(${p.reviews.length}명)</span>`
+          : `<span class="pc-no-rating">아직 평가 없음</span>`;
+
+        const meals = [...new Set([...(p.mealTime || []), ...p.reviews.flatMap(r => r.mealTime || [])])];
+
+        const dist = (p.lat && p.lng && baseCoord.y && baseCoord.x)
+          ? formatDist(calcDistance(+baseCoord.y, +baseCoord.x, +p.lat, +p.lng))
+          : null;
+
+        return `
+          <div class="place-card" id="card-${i}">
+            <div class="pc-body">
+              <div class="pc-title-row">
+                <div class="pc-name">${esc(p.name)}</div>
+                <button class="btn-card-del" onclick="deletePlace(${i})">✕</button>
+              </div>
+              <div class="pc-badges">
+                ${p.category ? `<span class="tag">${esc(p.category)}</span>` : ''}
+                ${meals.map(m => `<span class="tag tag-meal">${m}</span>`).join('')}
+              </div>
+              <div class="pc-info">
+                📍 ${esc(p.location)}${dist ? ` <span class="pc-dist">· ${dist}</span>` : ''}<br>
+                ${p.phone ? `📞 ${esc(p.phone)}` : ''}
+                ${p.phone ? ' · ' : ''}
+                <a href="https://map.naver.com/p/search/${encodeURIComponent(p.name + ' ' + p.location)}" target="_blank" onclick="event.stopPropagation()">예약하기 ↗</a>
+              </div>
+            </div>
+            <div class="pc-rating-block" onclick="toggleReviewPanel(${i})">
+              ${starsHtml}
+              <span class="pc-toggle-icon" id="toggle-${i}">▾</span>
+            </div>
+            <div class="review-panel" id="rp-${i}">
+              ${renderReviews(p.reviews)}
+              <button class="btn-add-review" onclick="toggleInlineForm(${i})">＋ 후기 남기기</button>
+              <div class="inline-review-form" id="irf-${i}">
+                <div class="irf-grid">
+                  <div>
+                    <div class="irf-label">이름 <span style="color:#e11d48;">필수</span></div>
+                    <input class="irf-input" id="irf-name-${i}" placeholder="홍길동" />
+                  </div>
+                  <div>
+                    <div class="irf-label">소속 <span style="color:#e11d48;">필수</span></div>
+                    <input class="irf-input" id="irf-dept-${i}" placeholder="마케팅팀" />
+                  </div>
+                </div>
+                <div class="irf-label">별점 <span style="color:#e11d48;">필수</span></div>
+                <div class="irf-star-row" id="irf-stars-${i}">
+                  ${[1,2,3,4,5].map(v => `<span class="irf-star" data-i="${i}" data-v="${v}" onclick="setIrfRating(${i},${v})">★</span>`).join('')}
+                </div>
+                <div class="irf-label" style="margin-bottom:4px;">리뷰 (선택)</div>
+                <textarea class="irf-input irf-textarea" id="irf-text-${i}" placeholder="자유롭게 남겨주세요..."></textarea>
+                <div class="irf-btn-row" style="margin-top:8px;">
+                  <button class="irf-submit" onclick="submitInlineReview(${i})">등록</button>
+                  <button class="irf-cancel" onclick="toggleInlineForm(${i})">취소</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        `;
+      }).join('');
+  }
+
+  function renderReviews(reviews) {
+    if (!reviews.length) return '<div class="empty-review">아직 후기가 없습니다.</div>';
+    return reviews.map(r => `
+      <div class="review-item">
+        <div class="review-meta-row">
+          <span class="review-name">${esc(r.recommender)}</span>
+          <span class="review-dept">${esc(r.dept)}</span>
+          <span class="review-date">${r.date}</span>
+        </div>
+        ${r.text ? `<div class="review-text">${esc(r.text)}</div>` : ''}
+      </div>
+    `).join('');
+  }
+
+  function toggleReviewPanel(i) {
+    document.getElementById(`rp-${i}`).classList.toggle('open');
+    document.getElementById(`toggle-${i}`).classList.toggle('open');
+  }
+
+  function openReviewPanel(i) {
+    document.getElementById(`rp-${i}`).classList.add('open');
+    document.getElementById(`toggle-${i}`).classList.add('open');
+    document.getElementById(`card-${i}`).scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+
+  /* 인라인 후기 폼 */
+  let irfRatings = {};
+
+  function toggleInlineForm(i) {
+    document.getElementById(`irf-${i}`).classList.toggle('open');
+  }
+
+  function setIrfRating(i, v) {
+    irfRatings[i] = v;
+    document.querySelectorAll(`#irf-stars-${i} .irf-star`)
+      .forEach(s => s.classList.toggle('on', +s.dataset.v <= v));
+  }
+
+  async function submitInlineReview(i) {
+    const name = document.getElementById(`irf-name-${i}`).value.trim();
+    const dept = document.getElementById(`irf-dept-${i}`).value.trim();
+    const r    = irfRatings[i] || 0;
+    if (!name) { showToast('이름을 입력해주세요.'); return; }
+    if (!dept) { showToast('소속을 입력해주세요.'); return; }
+    if (!r)    { showToast('별점을 선택해주세요.'); return; }
+
+    places[i].reviews.push({
+      recommender: name, dept, rating: r,
+      text: document.getElementById(`irf-text-${i}`).value.trim(),
+      mealTime: [],
+      date: new Date().toLocaleDateString('ko-KR'),
+    });
+    delete irfRatings[i];
+    const placeId = places[i].id;
+    const updatedReviews = places[i].reviews;
+    const { error } = await sb.from('places').update({ reviews: updatedReviews }).eq('id', placeId);
+    if (error) { showToast('저장 실패: ' + error.message); return; }
+    await loadPlaces();
+    const newIdx = places.findIndex(p => p.id === placeId);
+    if (newIdx !== -1) openReviewPanel(newIdx);
+    showToast('후기가 등록되었습니다!');
+  }
+
+  async function deletePlace(i) {
+    if (!confirm(`"${places[i].name}" 장소를 삭제할까요?`)) return;
+    const { error } = await sb.from('places').delete().eq('id', places[i].id);
+    if (error) { showToast('삭제 실패: ' + error.message); return; }
+    await loadPlaces();
+  }
+
+  /* ── Excel 불러오기 ── */
+  let importResults = []; // { name, category, mealTime, status, kakaoDoc, candidates, excluded }
+
+  function parseMealTime(val) {
+    const v = String(val).trim();
+    if (!v || v === '점심 / 저녁 / 둘다') return [];
+    if (v.includes('둘') || (v.includes('점심') && v.includes('저녁'))) return ['점심','저녁'];
+    if (v.includes('점심')) return ['점심'];
+    if (v.includes('저녁')) return ['저녁'];
+    return [];
+  }
+
+  function loadExcel(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+    event.target.value = '';
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      try {
+        const wb   = XLSX.read(e.target.result, { type: 'array' });
+        const ws   = wb.Sheets[wb.SheetNames[0]];
+        const rows = XLSX.utils.sheet_to_json(ws, { defval: '' });
+
+        // 헤더 매핑
+        const headers = rows.length ? Object.keys(rows[0]) : [];
+        const findCol = (keys) => keys.reduce((f,k) =>
+          f || headers.find(h => h.replace(/[\s\/]/g,'').toLowerCase() === k.replace(/[\s\/]/g,'').toLowerCase()), null);
+
+        const colName     = findCol(['식당명','장소명','이름','name']);
+        const colCat      = findCol(['카테고리','음식종류','종류','category']);
+        const colMeal     = findCol(['점심/저녁','점심저녁','식사시간','meal']);
+
+        const dataRows = rows.filter(r => {
+          const v = colName ? String(r[colName]).trim() : '';
+          return v && v !== '식당 이름을 입력하세요';
+        });
+
+        if (!dataRows.length) { showToast('등록할 식당 데이터가 없습니다.'); return; }
+
+        // 패널 열기 + 진행 초기화
+        importResults = [];
+        document.getElementById('import-overlay').classList.add('show');
+        document.getElementById('ip-summary').style.display = 'none';
+        document.getElementById('ip-confirm-btn').disabled = true;
+        document.getElementById('ip-progress-wrap').style.display = 'block';
+        document.getElementById('ip-list').innerHTML = '';
+        document.getElementById('ip-subtitle').textContent = '카카오 API로 장소 정보를 조회하고 있습니다...';
+
+        // 순차 처리 (API 과부하 방지)
+        for (let i = 0; i < dataRows.length; i++) {
+          const row  = dataRows[i];
+          const name = colName ? String(row[colName]).trim() : '';
+          const cat  = colCat  ? String(row[colCat]).trim()  : '';
+          const meal = parseMealTime(colMeal ? row[colMeal] : '');
+
+          const pct = Math.round(((i+1) / dataRows.length) * 100);
+          document.getElementById('ip-progress-fill').style.width = pct + '%';
+          document.getElementById('ip-progress-pct').textContent  = pct + '%';
+          document.getElementById('ip-progress-text').textContent = `(${i+1}/${dataRows.length}) "${name}" 조회 중...`;
+
+          let status = 'error', kakaoDoc = null, candidates = [];
+          try {
+            const resp = await fetch(
+              `https://dapi.kakao.com/v2/local/search/keyword.json?query=${encodeURIComponent(name)}&x=${baseCoord.x}&y=${baseCoord.y}&sort=distance&size=5`,
+              { headers: { Authorization: `KakaoAK ${kakaoKey}` } }
+            );
+            const data = await resp.json();
+            candidates = data.documents || [];
+            if (candidates.length === 0)         status = 'notfound';
+            else if (candidates.length === 1)    { status = 'matched'; kakaoDoc = candidates[0]; }
+            else                                 { status = 'multiple'; kakaoDoc = candidates[0]; }
+            // 기등록 중복 체크
+            if (kakaoDoc && places.find(p => p.kakaoId && p.kakaoId === kakaoDoc.id)) status = 'duplicate';
+          } catch(_) { status = 'error'; }
+
+          importResults.push({ name, category: cat, mealTime: meal, status, kakaoDoc, candidates, excluded: status === 'notfound' || status === 'error' || status === 'duplicate' });
+        }
+
+        renderImportResults();
+      } catch (err) {
+        addBotMsg(`❌ Excel 파일 읽기 오류: ${err.message}`, true);
+        closeImportPanel();
+      }
+    };
+    reader.readAsArrayBuffer(file);
+  }
+
+  function renderImportResults() {
+    document.getElementById('ip-progress-wrap').style.display = 'none';
+    document.getElementById('ip-subtitle').textContent = '등록할 항목을 확인하고 [등록하기]를 눌러주세요.';
+
+    const ok   = importResults.filter(r => !r.excluded && (r.status==='matched'||r.status==='multiple')).length;
+    const warn = importResults.filter(r => r.status==='multiple').length;
+    const dup  = importResults.filter(r => r.status==='duplicate').length;
+    const err  = importResults.filter(r => r.status==='notfound'||r.status==='error').length;
+
+    const summary = document.getElementById('ip-summary');
+    summary.style.display = 'flex';
+    summary.innerHTML = `
+      <span class="ip-badge ok">✅ 신규등록 ${ok}개</span>
+      ${warn ? `<span class="ip-badge warn">⚠️ 복수결과 ${warn}개</span>` : ''}
+      ${dup  ? `<span class="ip-badge dup">🔁 기등록 ${dup}개</span>`    : ''}
+      ${err  ? `<span class="ip-badge err">❌ 미검색 ${err}개</span>`    : ''}
+    `;
+
+    const list = document.getElementById('ip-list');
+    list.innerHTML = importResults.map((r, i) => {
+      const icon = r.status==='matched' ? '✅' : r.status==='multiple' ? '⚠️' : r.status==='duplicate' ? '🔁' : '❌';
+      const doc  = r.kakaoDoc;
+      const dist = (doc && doc.distance) ? (doc.distance >= 1000 ? (doc.distance/1000).toFixed(1)+'km' : doc.distance+'m') : '';
+
+      const detailHtml = doc
+        ? `📍 ${esc(doc.road_address_name || doc.address_name)}${dist ? ` <span style="color:#94a3b8">· ${dist}</span>` : ''}<br>🍴 ${esc(doc.category_name)}${doc.phone ? ` · 📞 ${esc(doc.phone)}` : ''}`
+        : '';
+
+      const selectHtml = r.status==='multiple'
+        ? `<select class="ip-select" onchange="changeCandidate(${i}, this.value)">
+            ${r.candidates.map((c,ci) => {
+              const d = c.distance >= 1000 ? (c.distance/1000).toFixed(1)+'km' : c.distance+'m';
+              return `<option value="${ci}">${esc(c.place_name)} — ${esc(c.road_address_name||c.address_name)} (${d})</option>`;
+            }).join('')}
+           </select>` : '';
+
+      const errorHtml = (r.status==='notfound'||r.status==='error'||r.status==='duplicate')
+        ? `<div class="ip-row-error${r.status==='duplicate' ? ' dup' : ''}">${
+            r.status==='notfound'  ? '검색 결과 없음 — 등록에서 제외됩니다.' :
+            r.status==='duplicate' ? '이미 등록된 장소입니다 — 신규 등록이 불가합니다.' :
+                                     'API 오류 — 등록에서 제외됩니다.'
+          }</div>` : '';
+
+      const canCheck = r.status !== 'notfound' && r.status !== 'error' && r.status !== 'duplicate';
+      const checked  = !r.excluded;
+
+      const mealSelectHtml = (canCheck && r.mealTime.length === 0)
+        ? `<div class="ip-meal-select">
+            <span class="ip-meal-select-label">⚠ 시간대 선택</span>
+            <div class="ip-meal-chip" id="ipm-lunch-${i}" onclick="toggleIpMeal(${i},'점심')">🌞 점심</div>
+            <div class="ip-meal-chip" id="ipm-dinner-${i}" onclick="toggleIpMeal(${i},'저녁')">🌙 저녁</div>
+           </div>` : '';
+
+      return `
+        <div class="ip-row${r.excluded ? ' excluded' : ''}" id="ip-row-${i}">
+          <div class="ip-checkbox-wrap">
+            <input type="checkbox" class="ip-checkbox" id="ip-chk-${i}"
+              ${checked ? 'checked' : ''} ${canCheck ? '' : 'disabled'}
+              onchange="toggleExclude(${i})" />
+          </div>
+          <div class="ip-row-info">
+            <div class="ip-row-name">${esc(r.name)}
+              ${r.mealTime.map(m=>`<span class="tag tag-meal" style="font-size:9px;margin-left:4px;">${m}</span>`).join('')}
+              ${r.category ? `<span class="tag" style="font-size:9px;margin-left:2px;">${esc(r.category)}</span>` : ''}
+            </div>
+            ${detailHtml ? `<div class="ip-row-detail">${detailHtml}</div>` : ''}
+            ${selectHtml}
+            ${errorHtml}
+            ${mealSelectHtml}
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    document.getElementById('ip-confirm-btn').disabled = importResults.every(r => r.excluded);
+  }
+
+  function changeCandidate(i, ci) {
+    importResults[i].kakaoDoc = importResults[i].candidates[+ci];
+  }
+
+  function toggleExclude(i) {
+    const chk = document.getElementById(`ip-chk-${i}`);
+    importResults[i].excluded = !chk.checked;
+    document.getElementById(`ip-row-${i}`).classList.toggle('excluded', importResults[i].excluded);
+    document.getElementById('ip-confirm-btn').disabled = importResults.every(r => r.excluded);
+  }
+
+  function toggleIpMeal(i, meal) {
+    const r = importResults[i];
+    const idx = r.mealTime.indexOf(meal);
+    if (idx === -1) r.mealTime.push(meal);
+    else r.mealTime.splice(idx, 1);
+    const chipId = meal === '점심' ? `ipm-lunch-${i}` : `ipm-dinner-${i}`;
+    document.getElementById(chipId).classList.toggle('checked', r.mealTime.includes(meal));
+  }
+
+  async function confirmImport() {
+    const rows = [];
+    let offset = 0;
+    importResults.forEach(r => {
+      if (r.excluded) return;
+      const doc = r.kakaoDoc;
+      const dup = doc && places.find(p => p.kakaoId && p.kakaoId === doc.id);
+      if (dup) return;
+      rows.push(placeToRow({
+        id:        Date.now() + offset++,
+        name:      doc ? doc.place_name : r.name,
+        category:  r.category || (doc ? doc.category_name.split('>').pop().trim() : ''),
+        location:  doc ? (doc.road_address_name || doc.address_name) : '',
+        phone:     doc ? doc.phone    : '',
+        kakaoUrl:  doc ? doc.place_url : '',
+        lat:       doc ? doc.y        : '',
+        lng:       doc ? doc.x        : '',
+        kakaoId:   doc ? doc.id       : '',
+        maxPeople: '', price: '', vibe: '', room: '', memo: '',
+        mealTime:  r.mealTime,
+        reviews:   [],
+      }));
+    });
+
+    if (!rows.length) { closeImportPanel(); return; }
+
+    const { error } = await sb.from('places').insert(rows);
+    if (error) { showToast('일괄 등록 실패: ' + error.message); return; }
+
+    await loadPlaces();
+    closeImportPanel();
+    addBotMsg(`✅ ${rows.length}개 장소가 등록됐습니다! 이제 회식 조건을 말씀해 주세요.`);
+    showToast(`${rows.length}개 장소 등록 완료!`);
+  }
+
+  function closeImportPanel() {
+    document.getElementById('import-overlay').classList.remove('show');
+    importResults = [];
+  }
+
+  /* ── Groq 채팅 ── */
+  /* 질문과 관련 있는 장소만 필터링 (최대 8개) */
+  function filterRelevantPlaces(query) {
+    if (!places.length) return [];
+    const q = query.toLowerCase();
+
+    /* 질문에서 키워드 추출 */
+    const keywords = q.match(/[가-힣a-z]+/g) || [];
+
+    /* 각 장소에 관련도 점수 부여 */
+    const scored = places.map(p => {
+      const target = [p.name, p.category, p.location, p.features,
+        ...p.reviews.map(r => r.text)]
+        .join(' ').toLowerCase();
+      const score = keywords.reduce((acc, kw) => acc + (target.includes(kw) ? 1 : 0), 0);
+      return { place: p, score };
+    });
+
+    /* 관련도 높은 순 정렬, 점수 0이면 전체 반환 (조건 미지정 쿼리) */
+    const hasMatch = scored.some(s => s.score > 0);
+    return (hasMatch ? scored.filter(s => s.score > 0) : scored)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 8)
+      .map(s => s.place);
+  }
+
+  function buildSystemPrompt(query = '') {
+    const persona = `
+[페르소나]
+당신은 "GXG 회식 큐레이터"입니다. 젝스인들에게 친근하고 위트 있는 말투로 소통하되, 장소 추천과 같은 실무 처리는 빈틈없이 완벽하게 해냅니다.
+
+[호칭 규칙 — 절대 준수]
+- 대화 상대를 지칭할 때는 "젝스인", "젝스지 여러분", "GXG 여러분" 중에서만 사용합니다.
+- "사용자", "유저", "고객" 등 공급자 중심 명칭은 절대 사용하지 않습니다.
+
+[톤앤매너]
+- 친근하고 유쾌한 어투를 사용하되, 정보 전달은 명확하고 군더더기 없이 합니다.
+- 가벼운 위트와 공감 표현을 자연스럽게 섞어, 딱딱하지 않은 동료 같은 느낌을 줍니다.
+- 추천 이유는 구체적인 데이터(별점, 리뷰, 인원, 가격)를 근거로 설명합니다.
+- 과도한 이모지 남발은 자제하고, 포인트가 되는 곳에서만 사용합니다.
+- 답변은 약 200자 내외로 간결하게 작성합니다. 불필요한 부연 설명은 생략합니다.
+`.trim();
+
+    if (!places.length) return `${persona}
+
+현재 등록된 장소 데이터가 없습니다. 젝스인이 왼쪽 사이드바에서 장소를 먼저 등록해줘야 추천을 드릴 수 있어요. 얼른 맛집 데이터를 채워주세요! 🍽️`;
+
+    const relevant = places;
+    const list = relevant.map((p, i) => {
+      const avgRating = p.reviews.length
+        ? (p.reviews.reduce((s,r) => s + r.rating, 0) / p.reviews.length).toFixed(1) : null;
+      const meals = [...new Set(p.reviews.flatMap(r => r.mealTime))].join('/');
+      const reviewSummary = p.reviews.map(r => `${r.recommender}(${r.dept}) ${r.rating}점: ${r.text || '내용 없음'}`).join(' | ');
+      let s = `${i+1}. ${p.name}`;
+      if (p.category)  s += ` | 종류: ${p.category}`;
+      if (p.location)  s += ` | 위치: ${p.location}`;
+      if (p.maxPeople) s += ` | 최대인원: ${p.maxPeople}명`;
+      if (p.price)     s += ` | 1인당: ${Number(p.price).toLocaleString()}원`;
+      if (p.vibe)      s += ` | 분위기: ${p.vibe}`;
+      if (p.room)      s += ` | 단체룸: ${p.room}`;
+      if (p.memo)      s += ` | 메모: ${p.memo}`;
+      if (avgRating)   s += ` | 평균별점: ${avgRating}점`;
+      if (meals)       s += ` | 추천시간대: ${meals}`;
+      if (reviewSummary) s += ` | 리뷰: ${reviewSummary}`;
+      return s;
+    }).join('\n');
+
+    return `${persona}
+
+[등록된 회식 장소 목록]
+${list}
+
+[답변 모드 — 질문 의도에 따라 구분]
+
+■ 모드 A : 장소 추천 (어디 갈까요, 추천해주세요 등)
+- 반드시 위 [등록된 회식 장소 목록]에서만 추천합니다.
+- 목록에 없는 외부 장소는 절대 언급하지 않습니다.
+- 인원·예산·음식 종류·시간대 등 조건을 파악해 최적 장소를 추천하고, 리뷰·별점을 근거로 설명합니다.
+- 조건에 맞는 곳이 없을 경우 솔직하게 말하고 가장 가까운 대안을 제시합니다.
+
+■ 모드 B : 장소 세부 정보 (메뉴, 인원, 분위기, 주차, 예약 방법 등)
+- 해당 장소의 DB 데이터가 있으면 우선 활용합니다.
+- DB에 정보가 없어도 절대 "목록에 없다", "확인이 필요하다", "정보가 부족하다"는 식으로 답하지 않습니다.
+- 대신 일반적으로 알려진 정보를 자신 있게 구체적으로 답변합니다. 예) "우나기칸은 일식 장어 전문점으로 대표 메뉴는 우나동, 히츠마부시예요."
+- 다른 장소의 데이터는 절대 섞지 않습니다.
+- 답변 말미에 "방문 전 최신 정보 확인을 권장해요" 한 줄만 자연스럽게 덧붙입니다.`;
+  }
+
+  function addBotMsg(text, isError = false) {
+    const div = document.createElement('div');
+    div.className = `msg bot${isError ? ' error' : ''}`;
+    div.innerHTML = `<div class="avatar">🤖</div><div class="bubble">${esc(text)}</div>`;
+    document.getElementById('messages').appendChild(div);
+    document.getElementById('messages').scrollTop = 9999;
+  }
+
+  function showTyping() {
+    const div = document.createElement('div');
+    div.className = 'msg bot typing'; div.id = 'typing-indicator';
+    div.innerHTML = `<div class="avatar">🤖</div><div class="bubble"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>`;
+    document.getElementById('messages').appendChild(div);
+    document.getElementById('messages').scrollTop = 9999;
+  }
+  function removeTyping() { const el = document.getElementById('typing-indicator'); if(el) el.remove(); }
+
+  async function sendMessage() {
+    const inputEl = document.getElementById('user-input');
+    const sendBtn = document.getElementById('send-btn');
+    const text = inputEl.value.trim();
+    if (!text) return;
+    inputEl.value = ''; inputEl.style.height = 'auto';
+    sendBtn.disabled = true;
+
+    const userDiv = document.createElement('div');
+    userDiv.className = 'msg user';
+    userDiv.innerHTML = `<div class="avatar">👤</div><div class="bubble">${esc(text)}</div>`;
+    document.getElementById('messages').appendChild(userDiv);
+    document.getElementById('messages').scrollTop = 9999;
+
+    history.push({ role: 'user', content: text });
+    showTyping();
+
+    try {
+      const res = await fetch(EDGE_FN_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${SUPABASE_KEY}` },
+        body: JSON.stringify({
+          model: MODEL,
+          messages: [{ role: 'system', content: buildSystemPrompt(text) }, ...history.slice(-10)],
+          temperature: 0.7
+        })
+      });
+      const data = await res.json();
+      removeTyping();
+      if (!res.ok) { addBotMsg(`오류: ${data.error?.message || '알 수 없는 오류'}`, true); history.pop(); return; }
+      const reply = data.choices?.[0]?.message?.content || '응답을 가져올 수 없습니다.';
+      history.push({ role: 'assistant', content: reply });
+      addBotMsg(reply);
+    } catch (err) {
+      removeTyping();
+      addBotMsg(`네트워크 오류: ${err.message}`, true);
+      history.pop();
+    } finally {
+      sendBtn.disabled = false;
+      document.getElementById('user-input').focus();
+    }
+  }
+
+  document.getElementById('user-input').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+  });
+  document.getElementById('user-input').addEventListener('input', function() {
+    this.style.height = 'auto';
+    this.style.height = Math.min(this.scrollHeight, 100) + 'px';
+  });
+
+  /* ── 토스트 ── */
+  function showToast(msg) {
+    const t = document.getElementById('toast');
+    t.textContent = msg; t.classList.add('show');
+    setTimeout(() => t.classList.remove('show'), 2500);
+  }
+
+  /* ── 유틸 ── */
+  function esc(str) {
+    return String(str||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>');
+  }
+
+  /* ── 외부 클릭 시 검색결과 닫기 ── */
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('.search-wrap')) {
+      document.getElementById('search-results').classList.remove('show');
+    }
+  });
+
+  /* ── 초기화 ── */
+  /* ── 대시보드 토글 ── */
+  const sidebar  = document.getElementById('sidebar');
+  const arrow    = document.querySelector('#dashboard-toggle .toggle-arrow');
+  const isMobile = () => window.innerWidth <= 900;
+
+  function toggleDashboard() {
+    if (isMobile()) {
+      const isOpen = sidebar.classList.contains('force-show');
+      sidebar.classList.toggle('force-show', !isOpen);
+      arrow.textContent = !isOpen ? '▶' : '◀';
+    } else {
+      const isCollapsed = sidebar.classList.contains('collapsed');
+      sidebar.classList.toggle('collapsed', !isCollapsed);
+      arrow.textContent = isCollapsed ? '▶' : '◀';
+    }
+  }
+
+  window.addEventListener('resize', () => {
+    if (!isMobile()) sidebar.classList.remove('force-show');
+    else sidebar.classList.remove('collapsed');
+  });
+
+  document.addEventListener('DOMContentLoaded', () => { initSupabase(); loadPlaces(); initPollMode(); });
+
+  document.addEventListener('click', (e) => {
+    const dd = document.getElementById('fb-cat-dd');
+    if (dd && !dd.contains(e.target)) {
+      document.getElementById('fb-cat-list')?.classList.remove('open');
+    }
+  });
+
+  document.getElementById('place-list-inner').addEventListener('scroll', () => {
+    if (filterBarOpen) {
+      filterBarOpen = false;
+      document.getElementById('fb-detail').classList.remove('open');
+    }
+  }, { passive: true });
+
+  /* ── 투표 ── */
+  let pollSelIds    = new Set();
+  let currentPoll   = null;
+  let currentVoteIds = new Set();
+
+  function openPollCreator() {
+    if (!places.length) { showToast('장소를 먼저 등록해주세요.'); return; }
+    pollSelIds.clear();
+    document.getElementById('poll-link-box').style.display = 'none';
+    const btn = document.getElementById('poll-create-btn');
+    btn.disabled = true; btn.textContent = '🔗 링크 생성';
+
+    document.getElementById('poll-opt-list').innerHTML = places.map(p => `
+      <div class="poll-opt" id="popt-${p.id}" onclick="togglePollOpt(${JSON.stringify(p.id)})">
+        <input type="checkbox" id="pchk-${p.id}" onclick="event.stopPropagation();togglePollOpt(${JSON.stringify(p.id)})" />
+        <div>
+          <div class="poll-opt-name">${esc(p.name)}</div>
+          <div class="poll-opt-meta">${[p.category, p.location].filter(Boolean).join(' · ')}</div>
+        </div>
+      </div>
+    `).join('');
+
+    document.getElementById('poll-creator-overlay').classList.add('show');
+  }
+
+  function closePollCreator() {
+    document.getElementById('poll-creator-overlay').classList.remove('show');
+  }
+
+  function togglePollOpt(id) {
+    if (pollSelIds.has(id)) pollSelIds.delete(id);
+    else pollSelIds.add(id);
+    document.getElementById(`popt-${id}`)?.classList.toggle('selected', pollSelIds.has(id));
+    const chk = document.getElementById(`pchk-${id}`);
+    if (chk) chk.checked = pollSelIds.has(id);
+    document.getElementById('poll-create-btn').disabled = pollSelIds.size < 2;
+  }
+
+  async function generatePollLink() {
+    const selected = places.filter(p => pollSelIds.has(p.id));
+    if (selected.length < 2) { showToast('2개 이상 선택해주세요.'); return; }
+
+    const btn = document.getElementById('poll-create-btn');
+    btn.disabled = true; btn.textContent = '저장 중...';
+
+    const pollId = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+    const pollData = {
+      id: pollId,
+      title: '이번 회식 장소 투표 🍽️',
+      options: selected.map(p => ({ id: String(p.id), name: p.name, category: p.category, location: p.location }))
+    };
+
+    try {
+      const { error } = await sb.from('polls').insert(pollData);
+      if (error) throw error;
+      const base = location.origin + location.pathname;
+      const link = `${base}?poll=${pollId}`;
+      document.getElementById('poll-link-input').value = link;
+      document.getElementById('poll-link-box').style.display = 'block';
+      btn.textContent = '✅ 링크 생성 완료';
+    } catch (err) {
+      showToast('투표 저장 실패: ' + (err.message || '알 수 없는 오류'));
+      btn.disabled = false; btn.textContent = '🔗 링크 생성';
+    }
+  }
+
+  function copyPollLink() {
+    const val = document.getElementById('poll-link-input').value;
+    navigator.clipboard.writeText(val).then(() => showToast('링크가 복사됐습니다!'));
+  }
+
+  async function initPollMode() {
+    const pollId = new URLSearchParams(location.search).get('poll');
+    if (!pollId) return;
+    if (!pollId) return;
+
+    initSupabase();
+    document.getElementById('poll-voting-overlay').classList.add('show');
+    document.getElementById('poll-load-area').style.display = 'block';
+    document.getElementById('poll-vote-area').style.display = 'none';
+    document.getElementById('poll-result-area').style.display = 'none';
+    document.getElementById('poll-vote-footer').style.display = 'none';
+
+    try {
+      const { data, error } = await sb.from('polls').select('*').eq('id', pollId).single();
+      if (error || !data) throw new Error('투표를 찾을 수 없습니다');
+
+      currentPoll = data;
+      document.getElementById('poll-vote-title').textContent = data.title || '회식 장소 투표';
+      document.getElementById('poll-load-area').style.display = 'none';
+      subscribeToVotes(pollId);
+
+      const fingerprint = await getVoterFingerprint();
+      const { data: myVote } = await sb.from('votes')
+        .select('id').eq('poll_id', pollId).eq('voter_fingerprint', fingerprint).maybeSingle();
+      if (myVote) {
+        const results = await fetchPollResults(pollId, data.options);
+        showPollResults(data, results);
+      } else {
+        document.getElementById('poll-voting-options').innerHTML = data.options.map(o => `
+          <div class="poll-opt" id="vopt-${o.id}" onclick="toggleVoteOpt('${o.id}')">
+            <input type="checkbox" id="vchk-${o.id}" onclick="event.stopPropagation();toggleVoteOpt('${o.id}')" />
+            <div>
+              <div class="poll-opt-name">${esc(o.name)}</div>
+              <div class="poll-opt-meta">${[o.category, o.location].filter(Boolean).join(' · ')}</div>
+            </div>
+          </div>
+        `).join('');
+        document.getElementById('poll-vote-area').style.display = 'block';
+        document.getElementById('poll-vote-footer').style.display = 'block';
+        // 투표 전에도 현재 현황 표시
+        renderCurrentStandings(data.options, await fetchPollResults(pollId, data.options));
+      }
+    } catch (e) {
+      console.error('투표 로드 실패', e);
+      document.getElementById('poll-load-area').textContent = '투표를 불러오지 못했습니다. 링크를 확인해주세요.';
+    }
+  }
+
+  function toggleVoteOpt(id) {
+    if (currentVoteIds.has(id)) currentVoteIds.delete(id);
+    else currentVoteIds.add(id);
+    document.getElementById(`vopt-${id}`)?.classList.toggle('selected', currentVoteIds.has(id));
+    const chk = document.getElementById(`vchk-${id}`);
+    if (chk) chk.checked = currentVoteIds.has(id);
+  }
+
+  async function submitVote() {
+    if (!currentVoteIds.size) { showToast('하나 이상 선택해주세요.'); return; }
+
+    const fingerprint = getVoterFingerprint();
+    const submitBtn = document.querySelector('#poll-vote-footer .poll-action-btn');
+    if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = '투표 중...'; }
+
+    try {
+      const { error } = await sb.from('votes').insert({
+        poll_id: currentPoll.id,
+        option_ids: [...currentVoteIds].map(String),
+        voter_fingerprint: fingerprint
+      });
+      if (error) {
+        // unique constraint 위반 = 이미 투표함
+        if (error.code === '23505') {
+          showToast('이미 투표하셨습니다.');
+        } else {
+          throw error;
+        }
+      }
+      // 결과 집계 후 표시
+      const results = await fetchPollResults(currentPoll.id, currentPoll.options);
+      showPollResults(currentPoll, results);
+    } catch (err) {
+      showToast('투표 처리 중 오류: ' + (err.message || '알 수 없는 오류'));
+      if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = '투표하기'; }
+    }
+  }
+
+  async function fetchPollResults(pollId, options) {
+    const { data: voteRows } = await sb.from('votes').select('option_ids').eq('poll_id', pollId);
+    const votes = {};
+    (voteRows || []).forEach(row => {
+      (row.option_ids || []).forEach(optId => {
+        votes[optId] = (votes[optId] || 0) + 1;
+      });
+    });
+    return votes;
+  }
+
+  function renderCurrentStandings(options, votes) {
+    const total = Object.values(votes).reduce((s, v) => s + v, 0);
+    const wrap  = document.getElementById('poll-current-wrap');
+    const totalEl = document.getElementById('poll-current-total');
+    if (totalEl) totalEl.textContent = total > 0 ? `· ${total}명 참여` : '· 아직 투표 없음';
+    const maxV = Math.max(...options.map(o => votes[o.id] || 0), 1);
+    document.getElementById('poll-current-bars').innerHTML = options
+      .slice().sort((a, b) => (votes[b.id] || 0) - (votes[a.id] || 0))
+      .map(o => {
+        const v = votes[o.id] || 0;
+        const pct = total > 0 ? Math.round(v / maxV * 100) : 0;
+        return `<div class="poll-current-item">
+          <div class="poll-current-name"><span>${esc(o.name)}</span><span>${v}표</span></div>
+          <div class="poll-current-bar-wrap"><div class="poll-current-bar" style="width:${pct}%"></div></div>
+        </div>`;
+      }).join('');
+    if (wrap) wrap.style.display = 'block';
+  }
+
+  let _voterFp = null;
+  async function getVoterFingerprint() {
+    if (_voterFp) return _voterFp;
+    try {
+      const fp = await window.FingerprintJS.load({ monitoring: false });
+      const result = await fp.get();
+      _voterFp = result.visitorId;
+    } catch {
+      // FingerprintJS 실패 시 localStorage 토큰으로 폴백
+      _voterFp = localStorage.getItem('voter_fp');
+      if (!_voterFp) {
+        _voterFp = Date.now().toString(36) + Math.random().toString(36).slice(2);
+        localStorage.setItem('voter_fp', _voterFp);
+      }
+    }
+    return _voterFp;
+  }
+
+  /* 결과 바 렌더링 (투표 후 화면 + Realtime 업데이트 공용) */
+  async function renderResultBars(data, votes) {
+    const total = Object.values(votes).reduce((s, v) => s + v, 0);
+    const { count: voterCount } = await sb.from('votes')
+      .select('id', { count: 'exact', head: true }).eq('poll_id', data.id);
+    const summaryEl = document.getElementById('poll-result-summary');
+    if (summaryEl) summaryEl.textContent = `총 ${total}표 · ${voterCount ?? 0}명 참여`;
+    const maxV = Math.max(...data.options.map(o => votes[o.id] || 0), 1);
+    const barsEl = document.getElementById('poll-result-bars');
+    if (barsEl) barsEl.innerHTML = [...data.options]
+      .sort((a, b) => (votes[b.id]||0) - (votes[a.id]||0)).map(o => {
+        const v = votes[o.id] || 0;
+        return `<div class="poll-res-item">
+          <div class="poll-res-name"><span>${esc(o.name)}</span><span>${v}표</span></div>
+          <div class="poll-res-bar-wrap"><div class="poll-res-bar" style="width:${Math.round(v/maxV*100)}%"></div></div>
+        </div>`;
+      }).join('');
+  }
+
+  async function showPollResults(data, votes) {
+    document.getElementById('poll-load-area').style.display = 'none';
+    document.getElementById('poll-vote-area').style.display = 'none';
+    document.getElementById('poll-vote-footer').style.display = 'none';
+    document.getElementById('poll-result-area').style.display = 'block';
+    await renderResultBars(data, votes);
+  }
+
+  /* ── Supabase Realtime 구독 ── */
+  let realtimeChannel = null;
+
+  function subscribeToVotes(pollId) {
+    if (realtimeChannel) sb.removeChannel(realtimeChannel);
+    realtimeChannel = sb
+      .channel(`votes_${pollId}`)
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'votes',
+        filter: `poll_id=eq.${pollId}`
+      }, async () => {
+        const votes = await fetchPollResults(pollId, currentPoll.options);
+        const resultArea = document.getElementById('poll-result-area');
+        if (resultArea && resultArea.style.display !== 'none') {
+          // 투표 완료 화면 — 바 + 참여자 수 실시간 갱신
+          await renderResultBars(currentPoll, votes);
+        } else {
+          // 투표 전 화면 — 현재 집계 현황 실시간 갱신
+          renderCurrentStandings(currentPoll.options, votes);
+        }
+      })
+      .subscribe();
+  }
+</script>
+
+<!-- 투표 생성 패널 -->
+<div id="poll-creator-overlay" class="poll-backdrop">
+  <div class="poll-panel">
+    <div class="poll-ph">
+      <span>🗳️ 투표 만들기</span>
+      <button onclick="closePollCreator()">✕</button>
+    </div>
+    <div class="poll-pb">
+      <p class="poll-hint">투표에 올릴 장소를 2개 이상 선택해 주세요</p>
+      <div id="poll-opt-list"></div>
+    </div>
+    <div id="poll-link-box" class="poll-link-box" style="display:none">
+      <div class="poll-link-label">🔗 투표 링크가 생성됐습니다!</div>
+      <div class="poll-link-row">
+        <input class="poll-link-input" id="poll-link-input" readonly />
+        <button class="poll-copy-btn" onclick="copyPollLink()">복사</button>
+      </div>
+    </div>
+    <div class="poll-pf">
+      <button class="poll-action-btn" id="poll-create-btn" onclick="generatePollLink()" disabled>🔗 링크 생성</button>
+    </div>
+  </div>
+</div>
+
+<!-- 투표 진행 페이지 -->
+<div id="poll-voting-overlay">
+  <div class="poll-panel">
+    <div class="poll-ph">
+      <span>🗳️ <span id="poll-vote-title">회식 장소 투표</span></span>
+    </div>
+    <div class="poll-pb">
+      <div id="poll-load-area" style="text-align:center;padding:32px 0;color:#94a3b8;font-size:13px;">투표를 불러오는 중...</div>
+      <div id="poll-vote-area" style="display:none">
+        <p class="poll-hint">가고 싶은 곳을 선택해 주세요 (복수 선택 가능)</p>
+        <div id="poll-voting-options"></div>
+        <div class="poll-current-wrap" id="poll-current-wrap" style="display:none">
+          <div class="poll-current-label">📊 현재 집계 현황 <span id="poll-current-total"></span></div>
+          <div id="poll-current-bars"></div>
+        </div>
+      </div>
+      <div id="poll-result-area" style="display:none">
+        <p class="poll-hint" id="poll-result-summary"></p>
+        <div id="poll-result-bars"></div>
+      </div>
+    </div>
+    <div class="poll-pf" id="poll-vote-footer" style="display:none">
+      <button class="poll-action-btn" onclick="submitVote()">투표하기</button>
+    </div>
+  </div>
+</div>
+</body>
+</html>
