@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>회식 장소 추천 챗봇</title>
   <script>if(new URLSearchParams(location.search).has('poll'))document.documentElement.classList.add('poll-mode');</script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -18,6 +18,7 @@
     body {
       font-family: 'Segoe UI', -apple-system, sans-serif;
       height: 100vh;
+      height: 100dvh;
       display: flex;
       overflow: hidden;
       background-color: #f0f0f5;
@@ -666,20 +667,56 @@
     }
     #dashboard-toggle .toggle-arrow { transition: transform 0.25s; line-height: 1; }
 
-    /* 대시보드 숨김 */
-    #sidebar.collapsed { display: none; }
-
-    /* 반응형: 900px 이하에서 대시보드 자동 숨김 */
+    /* 반응형: 900px 이하 — 사이드바를 off-screen으로 밀고 토글 버튼만 노출 */
     @media (max-width: 900px) {
-      #sidebar { display: none; overflow: visible; }
-      #sidebar.force-show {
-        display: flex;
+      #sidebar {
+        display: flex !important;
         position: fixed; top: 0; right: 0; bottom: 0;
         width: 320px; min-width: 320px;
-        z-index: 200;
+        /* 사이드바 내용은 화면 밖으로, 토글 버튼(28px)만 노출 */
+        transform: translateX(calc(100% - 28px));
+        transition: transform 0.28s ease;
+        z-index: 200; overflow: visible;
+      }
+      #sidebar.force-show {
+        transform: translateX(0);
         box-shadow: -4px 0 24px rgba(99,102,241,0.15);
       }
       #sidebar.force-show ~ #sidebar-overlay { display: block; }
+      /* 모바일에서 토글 버튼 터치 영역 확보 */
+      #dashboard-toggle { width: 32px; height: 72px; }
+    }
+
+    /* ── 480px 이하 모바일 전용 ── */
+    @media (max-width: 480px) {
+      .msg { max-width: 95%; }
+      #messages { padding: 14px 12px; gap: 10px; }
+      #input-area { padding: 10px 12px; padding-bottom: max(10px, env(safe-area-inset-bottom)); }
+      #send-btn { width: 44px; height: 44px; }
+      .bubble { font-size: 14px; }
+      .pc-name { font-size: 14px; }
+      .pc-info { font-size: 12px; }
+
+      /* 투표 패널 전체화면 */
+      .poll-panel {
+        width: 100% !important; max-width: 100% !important;
+        height: 100dvh !important; border-radius: 0 !important; margin: 0 !important;
+      }
+      .poll-opt { min-height: 52px; padding: 14px 16px; }
+      .poll-action-btn { min-height: 48px; font-size: 15px; }
+    }
+
+    /* PC에서 13px 복원 */
+    @media (min-width: 481px) {
+      #user-input { font-size: 13px; }
+    }
+
+    /* 터치 기기 hover 잔류 방지 */
+    @media (hover: none) {
+      .btn-card-del:hover,
+      .pc-rating-block:hover,
+      .fb-toggle-row:hover,
+      .fb-cat-item:hover { background: none !important; }
     }
 
     /* 모바일 오버레이 — 사이드바 열릴 때만 표시 */
@@ -743,6 +780,7 @@
 
     #input-area {
       padding: 12px 16px;
+      padding-bottom: max(12px, env(safe-area-inset-bottom));
       background: rgba(255,255,255,0.68);
       backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
       border-top: 1px solid rgba(255,255,255,0.50);
@@ -754,7 +792,7 @@
       background: rgba(255,255,255,0.80);
       border: 1px solid rgba(255,255,255,0.6);
       border-radius: 12px; color: #1e293b;
-      font-size: 13px; padding: 10px 14px;
+      font-size: 16px; padding: 10px 14px;
       resize: none; outline: none;
       max-height: 100px; line-height: 1.55;
       font-family: inherit;
@@ -2240,7 +2278,7 @@ ${list}
     if (isMobile()) {
       const isOpen = sidebar.classList.contains('force-show');
       sidebar.classList.toggle('force-show', !isOpen);
-      arrow.textContent = !isOpen ? '▶' : '◀';
+      arrow.textContent = isOpen ? '◀' : '▶';
     } else {
       const isCollapsed = sidebar.classList.contains('collapsed');
       sidebar.classList.toggle('collapsed', !isCollapsed);
