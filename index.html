@@ -221,6 +221,48 @@
     }
     .btn-card-del:hover { background: rgba(239,68,68,0.1); color: #ef4444; }
 
+    /* ── 관리자 모드 버튼 ── */
+    #admin-mode-btn {
+      background: none; border: none; cursor: pointer;
+      font-size: 11px; color: #94a3b8; padding: 4px 6px;
+      border-radius: 6px; transition: color 0.15s, background 0.15s;
+    }
+    #admin-mode-btn:hover { color: #64748b; background: rgba(0,0,0,0.04); }
+
+    /* ── 관리자 인증 모달 ── */
+    #admin-modal-overlay {
+      display: none; position: fixed; inset: 0; z-index: 500;
+      background: rgba(15,23,42,0.45); backdrop-filter: blur(4px);
+      align-items: center; justify-content: center;
+    }
+    #admin-modal {
+      background: rgba(255,255,255,0.95);
+      border: 1px solid rgba(255,255,255,0.6);
+      border-radius: 16px;
+      box-shadow: 0 8px 32px rgba(99,102,241,0.15);
+      padding: 28px 24px 20px;
+      width: 280px; max-width: 90vw;
+      display: flex; flex-direction: column; gap: 14px;
+    }
+    #admin-modal h3 {
+      margin: 0; font-size: 15px; font-weight: 700; color: #1e293b; text-align: center;
+    }
+    #admin-pw-input {
+      width: 100%; box-sizing: border-box;
+      padding: 10px 12px; font-size: 14px;
+      border: 1px solid rgba(99,102,241,0.25); border-radius: 10px;
+      outline: none; background: rgba(248,250,252,0.9);
+    }
+    #admin-pw-input:focus { border-color: #6366f1; }
+    .admin-modal-btns { display: flex; gap: 8px; }
+    .admin-modal-btns button {
+      flex: 1; padding: 10px 0; border: none; border-radius: 10px;
+      font-size: 13px; font-weight: 600; cursor: pointer; transition: opacity 0.15s;
+    }
+    .admin-modal-btns button:hover { opacity: 0.85; }
+    #admin-confirm-btn { background: #4f46e5; color: #fff; }
+    #admin-cancel-btn  { background: rgba(99,102,241,0.1); color: #4f46e5; }
+
     /* 배지 행 */
     .pc-badges { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 7px; }
     .tag {
@@ -609,6 +651,23 @@
     }
     .upload-zone:hover { border-color: rgba(99,102,241,0.5); color: #6d28d9; background: rgba(99,102,241,0.05); }
     #excel-input { display: none; }
+
+    /* ── 관리자 하단 액션 바 ── */
+    #admin-action-bar {
+      display: flex; align-items: stretch; gap: 6px;
+      padding: 6px 10px 10px;
+      border-top: 1px solid rgba(99,102,241,0.08);
+    }
+    .admin-action-btn {
+      flex: 1; display: flex; align-items: center; justify-content: center; gap: 5px;
+      padding: 8px 0; border: none; border-radius: 9px; cursor: pointer;
+      font-size: 11px; font-weight: 600; transition: opacity 0.15s, background 0.15s;
+      white-space: nowrap;
+    }
+    .admin-action-btn:hover { opacity: 0.82; }
+    #admin-mode-btn   { background: rgba(99,102,241,0.08); color: #4f46e5; }
+    #excel-upload-btn { background: rgba(99,102,241,0.08); color: #4f46e5; display: none; }
+    #admin-mode-btn.active { background: rgba(239,68,68,0.08); color: #dc2626; }
 
     /* 빈 상태 */
     .empty-hint { text-align: center; color: #cbd5e1; font-size: 12px; padding: 28px 8px; }
@@ -1144,10 +1203,13 @@
     <div style="padding: 8px 10px; flex:1; overflow-y:auto;" id="place-list-inner">
       <div class="empty-hint"><div class="icon">📋</div>아직 등록된 장소가 없습니다.</div>
     </div>
-    <label class="upload-zone" for="excel-input">
-      📊 Excel 일괄 불러오기 (.xlsx)
-    </label>
-    <input type="file" id="excel-input" accept=".xlsx,.xls" onchange="loadExcel(event)" />
+    <div id="admin-action-bar">
+      <button id="excel-upload-btn" class="admin-action-btn" onclick="document.getElementById('excel-input').click()">
+        📊 Excel 불러오기
+      </button>
+      <input type="file" id="excel-input" accept=".xlsx,.xls" onchange="loadExcel(event)" />
+      <button id="admin-mode-btn" class="admin-action-btn" onclick="toggleAdminMode()">🔐 관리자 모드 전환</button>
+    </div>
   </div>
 
   <!-- 추가 탭 -->
@@ -1297,6 +1359,19 @@
 <div id="toast"></div>
 <div id="sidebar-overlay" onclick="toggleDashboard()"></div>
 
+<!-- ── 관리자 인증 모달 ── -->
+<div id="admin-modal-overlay" onclick="if(event.target===this)closeAdminModal()">
+  <div id="admin-modal">
+    <h3>🔐 관리자 인증</h3>
+    <input type="password" id="admin-pw-input" placeholder="비밀번호를 입력하세요"
+           onkeydown="if(event.key==='Enter')confirmAdmin()" />
+    <div class="admin-modal-btns">
+      <button id="admin-confirm-btn" onclick="confirmAdmin()">확인</button>
+      <button id="admin-cancel-btn"  onclick="closeAdminModal()">취소</button>
+    </div>
+  </div>
+</div>
+
 <!-- ── 엑셀 임포트 리뷰 패널 ── -->
 <div id="import-overlay">
   <div id="import-panel">
@@ -1325,10 +1400,11 @@
 
 <script>
   /* ── 상수 ── */
-  const EDGE_FN_URL  = 'https://ofpaimkijmwaielamevl.supabase.co/functions/v1/swift-worker';
-  const MODEL        = 'llama-3.3-70b-versatile';
-  const SUPABASE_URL = 'https://ofpaimkijmwaielamevl.supabase.co';
-  const SUPABASE_KEY = 'sb_publishable_0SISEwqNDfPvcdmp-Ysy4g_gaB-2h9q';
+  const EDGE_FN_URL      = 'https://ofpaimkijmwaielamevl.supabase.co/functions/v1/swift-worker';
+  const MODEL            = 'llama-3.3-70b-versatile';
+  const SUPABASE_URL     = 'https://ofpaimkijmwaielamevl.supabase.co';
+  const SUPABASE_KEY     = 'sb_publishable_0SISEwqNDfPvcdmp-Ysy4g_gaB-2h9q';
+  const VERIFY_ADMIN_URL = 'https://ofpaimkijmwaielamevl.supabase.co/functions/v1/verify-admin';
 
   let sb = null;
   function initSupabase() {
@@ -1760,7 +1836,7 @@
             <div class="pc-body">
               <div class="pc-title-row">
                 <div class="pc-name">${esc(p.name)}</div>
-                <button class="btn-card-del" onclick="deletePlace(${i})">✕</button>
+                ${isAdminMode() ? `<button class="btn-card-del" onclick="deletePlace(${i})">✕</button>` : ''}
               </div>
               <div class="pc-badges">
                 ${p.category ? `<span class="tag">${esc(p.category)}</span>` : ''}
@@ -1869,6 +1945,71 @@
     const newIdx = places.findIndex(p => p.id === placeId);
     if (newIdx !== -1) openReviewPanel(newIdx);
     showToast('후기가 등록되었습니다!');
+  }
+
+  /* ── 관리자 인증 ── */
+  function isAdminMode() {
+    return sessionStorage.getItem('isAdmin') === 'true';
+  }
+
+  function activateAdmin() {
+    sessionStorage.setItem('isAdmin', 'true');
+    const btn = document.getElementById('admin-mode-btn');
+    btn.textContent = '🔓 관리자 모드 해지';
+    btn.classList.add('active');
+    document.getElementById('excel-upload-btn').style.display = 'flex';
+    renderPlaceList();
+    showToast('관리자 모드가 활성화됐습니다');
+  }
+
+  function deactivateAdmin() {
+    sessionStorage.removeItem('isAdmin');
+    const btn = document.getElementById('admin-mode-btn');
+    btn.textContent = '🔐 관리자 모드 전환';
+    btn.classList.remove('active');
+    document.getElementById('excel-upload-btn').style.display = 'none';
+    renderPlaceList();
+    showToast('관리자 모드가 해제됐습니다');
+  }
+
+  function showAdminModal() {
+    document.getElementById('admin-pw-input').value = '';
+    document.getElementById('admin-modal-overlay').style.display = 'flex';
+    setTimeout(() => document.getElementById('admin-pw-input').focus(), 50);
+  }
+
+  function closeAdminModal() {
+    document.getElementById('admin-modal-overlay').style.display = 'none';
+  }
+
+  async function confirmAdmin() {
+    const pw = document.getElementById('admin-pw-input').value;
+    if (!pw) return;
+    const btn = document.getElementById('admin-confirm-btn');
+    btn.disabled = true; btn.textContent = '확인 중...';
+    try {
+      const res = await fetch(VERIFY_ADMIN_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${SUPABASE_KEY}` },
+        body: JSON.stringify({ password: pw })
+      });
+      const data = await res.json();
+      if (data.ok) {
+        closeAdminModal();
+        activateAdmin();
+      } else {
+        showToast('비밀번호가 올바르지 않습니다');
+      }
+    } catch {
+      showToast('인증 중 오류가 발생했습니다');
+    } finally {
+      btn.disabled = false; btn.textContent = '확인';
+    }
+  }
+
+  function toggleAdminMode() {
+    if (isAdminMode()) deactivateAdmin();
+    else showAdminModal();
   }
 
   async function deletePlace(i) {
@@ -2143,18 +2284,32 @@
 - 추천 이유는 구체적인 데이터(별점, 리뷰, 인원, 가격)를 근거로 설명합니다.
 - 과도한 이모지 남발은 자제하고, 포인트가 되는 곳에서만 사용합니다.
 - 답변은 약 200자 내외로 간결하게 작성합니다. 불필요한 부연 설명은 생략합니다.
+- 모든 답변은 반드시 한국어로만 작성합니다.
+- 영어, 중국어, 베트남어 등 다른 언어의 단어나 문자가 절대 섞이지 않도록 합니다.
+- 리뷰 내용을 인용하거나 요약할 때도 한국어로만 표현합니다.
 `.trim();
 
     if (!places.length) return `${persona}
 
 현재 등록된 장소 데이터가 없습니다. 젝스인이 왼쪽 사이드바에서 장소를 먼저 등록해줘야 추천을 드릴 수 있어요. 얼른 맛집 데이터를 채워주세요! 🍽️`;
 
+    const categories = [...new Set(places.map(p => p.category).filter(Boolean))];
+    const categoryList = categories.join(', ');
+
+    const dataNote = `
+[데이터 신뢰 규칙 — 절대 준수]
+- 각 장소의 인원, 가격, 위치, 분위기 등은 반드시 위 목록의 데이터만 사용하세요.
+- 목록에 해당 필드가 없으면 절대 임의로 추측하거나 지어내지 마세요.
+- 데이터가 없는 필드는 표시하지 마세요.
+`;
+
     const relevant = places;
     const list = relevant.map((p, i) => {
       const avgRating = p.reviews.length
         ? (p.reviews.reduce((s,r) => s + r.rating, 0) / p.reviews.length).toFixed(1) : null;
       const meals = [...new Set(p.reviews.flatMap(r => r.mealTime))].join('/');
-      const reviewSummary = p.reviews.map(r => `${r.recommender}(${r.dept}) ${r.rating}점: ${r.text || '내용 없음'}`).join(' | ');
+      const topReview = p.reviews.filter(r => r.text && r.text.trim()).sort((a, b) => b.rating - a.rating)[0];
+      const reviewSummary = topReview ? `"${topReview.text.trim()}" - ${topReview.recommender}, ${topReview.rating}점` : '';
       let s = `${i+1}. ${p.name}`;
       if (p.category)  s += ` | 종류: ${p.category}`;
       if (p.location)  s += ` | 위치: ${p.location}`;
@@ -2165,29 +2320,66 @@
       if (p.memo)      s += ` | 메모: ${p.memo}`;
       if (avgRating)   s += ` | 평균별점: ${avgRating}점`;
       if (meals)       s += ` | 추천시간대: ${meals}`;
-      if (reviewSummary) s += ` | 리뷰: ${reviewSummary}`;
+      if (reviewSummary) s += ` | 대표리뷰: ${reviewSummary}`;
       return s;
     }).join('\n');
 
     return `${persona}
 
+[현재 등록된 카테고리 목록]
+${categoryList}
+
+사용자가 음식 종류를 언급하면 위 카테고리 중 의미적으로 가장 가까운 것을
+모두 포함해서 추천하세요. 예) "고기" 요청 시 → 갈비, 삼겹살, 소고기구이 등
+유사한 카테고리 전부 포함. 정확한 단어 일치가 아닌 의미 기반으로 판단하세요.
+
+${dataNote}
 [등록된 회식 장소 목록]
 ${list}
 
 [답변 모드 — 질문 의도에 따라 구분]
 
-■ 모드 A : 장소 추천 (어디 갈까요, 추천해주세요 등)
+[모드 판단 기준]
+- "추천", "어디", "갈까", "뭐 먹", "골라줘" 포함 → 모드 A
+- 특정 장소명 + "어때", "괜찮아", "정보", "메뉴", "예약" 포함 → 모드 B
+- 두 가지가 섞인 경우 → 모드 A 우선 처리 후 해당 장소 정보 추가 제공
+
+■ 모드 A : 장소 추천
 - 반드시 위 [등록된 회식 장소 목록]에서만 추천합니다.
 - 목록에 없는 외부 장소는 절대 언급하지 않습니다.
-- 인원·예산·음식 종류·시간대 등 조건을 파악해 최적 장소를 추천하고, 리뷰·별점을 근거로 설명합니다.
-- 조건에 맞는 곳이 없을 경우 솔직하게 말하고 가장 가까운 대안을 제시합니다.
+- 아래 우선순위 기준으로 최적 장소를 선정하세요:
+
+  1순위: 음식 종류 의미적 일치 (카테고리 유사어 포함)
+  2순위: 평균 별점 높은 순
+  3순위: 리뷰 수 많은 순
+- 조건을 많이 충족할수록 우선 추천합니다.
+- 조건에 맞는 곳이 없으면 솔직하게 말하고 가장 가까운 대안을 제시합니다.
+- 인원수·예산·음식 종류가 모두 없을 때만 딱 1가지만 물어보세요.
+  가장 먼저 물어볼 것: 인원수 (필터링 효과가 가장 큼)
+  예) "몇 분이서 드실 예정인가요? 😊"
+- 되묻기는 대화 전체에서 최대 1회만 허용. 이후엔 주어진 조건으로 바로 추천.
+- 이미 조건이 하나라도 있으면 바로 추천으로 진행.
+- 모드 판단은 내부적으로만 처리하고 "모드 A로 전환합니다", "모드 B로 전환합니다" 같은 내부 동작은 절대 사용자에게 노출하지 않습니다.
+- 추천 결과는 아래 형식으로 작성하세요. 최대 3곳까지 추천:
+
+  **[장소명]**
+  음식 카테고리와 실제 리뷰 내용을 바탕으로 1~2문장으로 설명하세요.
+  단순히 "맛있다"가 아니라 리뷰에서 언급된 구체적인 특징
+  (예: 음식 스타일, 맛의 특징, 분위기, 재방문 이유 등)을 중심으로 작성.
+  실제 리뷰가 없으면 DB의 카테고리(category), 분위기(vibe), 메모(memo) 순으로 활용.
+  위치, 인원, 가격 정보는 표시하지 않음.
+
+  각 장소는 빈 줄로 구분. 장소명을 설명 안에 다시 언급하지 말 것.
+  첫 문장은 사용자 요청에 공감하는 자연스러운 도입으로 시작.
+  마지막은 한 줄 코멘트로 가볍게 마무리.
 
 ■ 모드 B : 장소 세부 정보 (메뉴, 인원, 분위기, 주차, 예약 방법 등)
-- 해당 장소의 DB 데이터가 있으면 우선 활용합니다.
-- DB에 정보가 없어도 절대 "목록에 없다", "확인이 필요하다", "정보가 부족하다"는 식으로 답하지 않습니다.
-- 대신 일반적으로 알려진 정보를 자신 있게 구체적으로 답변합니다. 예) "우나기칸은 일식 장어 전문점으로 대표 메뉴는 우나동, 히츠마부시예요."
+- 해당 장소의 DB 데이터(리뷰, 분위기, 메모, 카테고리 등)를 최대한 활용합니다.
+- DB에 해당 정보가 없으면 "등록된 정보가 없어요. 방문 전 직접 확인해보시는 걸 권장해요."라고 솔직하게 안내합니다.
+- DB에 없는 정보를 지어내거나 추측해서 답하지 않습니다.
 - 다른 장소의 데이터는 절대 섞지 않습니다.
-- 답변 말미에 "방문 전 최신 정보 확인을 권장해요" 한 줄만 자연스럽게 덧붙입니다.`;
+- 위치, 최대인원, 1인당 가격 등 상세 정보는 모드 B에서만 제공합니다.
+  사용자가 특정 장소에 대해 구체적으로 물어볼 때 해당 데이터를 상세하게 안내하세요.`;
   }
 
   function addBotMsg(text, isError = false) {
@@ -2231,7 +2423,7 @@ ${list}
         body: JSON.stringify({
           model: MODEL,
           messages: [{ role: 'system', content: buildSystemPrompt(text) }, ...history.slice(-10)],
-          temperature: 0.7
+          temperature: 0.3
         })
       });
       const data = await res.json();
@@ -2300,7 +2492,10 @@ ${list}
     else sidebar.classList.remove('collapsed');
   });
 
-  document.addEventListener('DOMContentLoaded', () => { initSupabase(); loadPlaces(); initPollMode(); });
+  document.addEventListener('DOMContentLoaded', () => {
+    sessionStorage.removeItem('isAdmin');
+    initSupabase(); loadPlaces(); initPollMode();
+  });
 
   document.addEventListener('click', (e) => {
     const dd = document.getElementById('fb-cat-dd');
