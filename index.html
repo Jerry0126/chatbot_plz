@@ -214,12 +214,16 @@
     }
     .pc-name { font-size: 13px; font-weight: 700; color: #1e293b; line-height: 1.3; }
 
-    .btn-card-del {
-      background: transparent; color: #cbd5e1; border: none;
-      font-size: 12px; cursor: pointer; padding: 1px 4px;
-      border-radius: 4px; transition: all 0.15s; flex-shrink: 0;
+    .pc-admin-actions { display: flex; gap: 2px; align-items: center; flex-shrink: 0; }
+    .btn-card-edit, .btn-card-del {
+      background: transparent; border: none; cursor: pointer;
+      font-size: 11px; font-weight: 600; color: #94a3b8;
+      padding: 3px 7px; border-radius: 5px;
+      transition: background 0.15s, color 0.15s; flex-shrink: 0;
+      font-family: inherit;
     }
-    .btn-card-del:hover { background: rgba(239,68,68,0.1); color: #ef4444; }
+    .btn-card-edit:hover { background: rgba(99,102,241,0.10); color: #6366f1; }
+    .btn-card-del:hover  { background: rgba(239,68,68,0.10);  color: #ef4444; }
 
     /* ── 관리자 모드 버튼 ── */
     #admin-mode-btn {
@@ -724,7 +728,15 @@
       background: rgba(255,255,255,0.95);
       box-shadow: -4px 0 16px rgba(99,102,241,0.18);
     }
-    #dashboard-toggle .toggle-arrow { transition: transform 0.25s; line-height: 1; }
+    /* 데스크탑: 기본(열림)=◀, collapsed(닫힘)=▶ */
+    #dashboard-toggle .toggle-arrow { transition: transform 0.25s; line-height: 1; display: inline-block; }
+    #sidebar.collapsed .toggle-arrow { transform: scaleX(-1); }
+
+    /* 모바일: 기본(숨김)=▶, force-show(열림)=◀ */
+    @media (max-width: 1024px) {
+      #dashboard-toggle .toggle-arrow { transform: scaleX(-1); }
+      #sidebar.force-show .toggle-arrow { transform: scaleX(1); }
+    }
 
     /*
      * 드로어 모드: 1024px 이하 (태블릿 세로·가로 + 모든 모바일)
@@ -1152,6 +1164,184 @@
       align-items:center; justify-content:center;
     }
     #poll-voting-overlay.show { display:flex; }
+
+    /* ── 유사어 관리 오버레이 ── */
+    #synonym-overlay {
+      display: none; position: fixed; inset: 0; z-index: 500;
+      background: rgba(15,15,26,0.45); backdrop-filter: blur(4px);
+      -webkit-backdrop-filter: blur(4px);
+      align-items: center; justify-content: center; padding: 20px;
+    }
+    #synonym-overlay.show { display: flex; }
+    #synonym-panel {
+      background: rgba(255,255,255,0.97); backdrop-filter: blur(20px);
+      border: 1px solid rgba(255,255,255,0.6); border-radius: 18px;
+      box-shadow: 0 16px 48px rgba(99,102,241,0.18);
+      width: 100%; max-width: 560px; max-height: 85vh;
+      display: flex; flex-direction: column; overflow: hidden;
+    }
+    .syn-header {
+      padding: 16px 20px 12px; border-bottom: 1px solid rgba(99,102,241,0.10);
+      display: flex; align-items: center; gap: 8px;
+    }
+    .syn-header h2 { font-size: 15px; font-weight: 700; color: #1e293b; flex: 1; }
+    .kw-tabs {
+      display: flex; border-bottom: 1px solid rgba(99,102,241,0.12);
+      padding: 0 16px; gap: 0; flex-shrink: 0;
+    }
+    .kw-tab-btn {
+      padding: 10px 16px; font-size: 13px; font-weight: 600;
+      border: none; background: none; cursor: pointer; color: #94a3b8;
+      border-bottom: 2px solid transparent; margin-bottom: -1px;
+      transition: color 0.15s, border-color 0.15s; font-family: inherit;
+    }
+    .kw-tab-btn:hover { color: #6366f1; }
+    .kw-tab-btn.active { color: #4f46e5; border-bottom-color: #4f46e5; }
+    .kw-tab-pane { display: flex; flex-direction: column; flex: 1; overflow: hidden; }
+    .syn-close {
+      background: none; border: none; font-size: 18px; color: #94a3b8;
+      cursor: pointer; padding: 2px 6px; border-radius: 6px; transition: all 0.12s;
+    }
+    .syn-close:hover { background: rgba(239,68,68,0.1); color: #ef4444; }
+    .syn-body { flex: 1; overflow-y: auto; padding: 12px 16px; }
+    .syn-body::-webkit-scrollbar { width: 3px; }
+    .syn-body::-webkit-scrollbar-thumb { background: rgba(99,102,241,0.2); border-radius: 2px; }
+    .syn-card {
+      border-bottom: 1px solid rgba(99,102,241,0.10);
+      padding: 10px 0; margin-bottom: 0;
+    }
+    .syn-card:last-child { border-bottom: none; }
+    .syn-card-row { display: flex; align-items: flex-start; gap: 10px; }
+    .syn-keyword {
+      font-size: 12px; font-weight: 700; color: #3730a3;
+      white-space: nowrap; flex-shrink: 0;
+      padding-top: 3px; min-width: 40px;
+    }
+    .syn-list {
+      flex: 1; display: flex; flex-wrap: wrap; align-items: center; gap: 4px;
+    }
+    .syn-add-row { width: 100%; margin-top: 6px; }
+    .syn-actions {
+      display: flex; flex-direction: row; gap: 4px; flex-shrink: 0; padding-top: 1px;
+    }
+    .syn-btn {
+      padding: 3px 9px; border-radius: 6px; border: none; font-size: 11px;
+      font-weight: 600; cursor: pointer; transition: opacity 0.12s;
+    }
+    .syn-btn:hover { opacity: 0.8; }
+    .syn-btn-edit { background: rgba(99,102,241,0.10); color: #4f46e5; }
+    .syn-btn-del  { background: rgba(239,68,68,0.10);  color: #dc2626; }
+    .syn-tag {
+      display: inline-block;
+      background: rgba(99,102,241,0.08); color: #6d28d9;
+      border-radius: 4px; padding: 1px 7px;
+      font-size: 11px; font-weight: 600; margin-right: 3px; margin-bottom: 2px;
+    }
+    .syn-chip {
+      display: inline-flex; align-items: center; gap: 3px;
+      background: rgba(99,102,241,0.12); color: #4338ca;
+      border-radius: 5px; padding: 2px 4px 2px 8px;
+      font-size: 11px; font-weight: 600; margin-right: 4px; margin-bottom: 4px;
+    }
+    .syn-chip-del {
+      background: none; border: none; cursor: pointer;
+      color: #a5b4fc; font-size: 13px; line-height: 1;
+      padding: 0 2px; border-radius: 3px; transition: color 0.12s;
+    }
+    .syn-chip-del:hover { color: #dc2626; }
+    .syn-edit-area { display: none; margin-top: 8px; }
+    .syn-edit-area.open { display: block; }
+    .syn-add-row { display: flex; gap: 6px; margin-bottom: 8px; }
+    .syn-add-input {
+      flex: 1; padding: 6px 10px; border-radius: 8px; font-size: 12px;
+      border: 1px solid rgba(99,102,241,0.25); background: rgba(255,255,255,0.9);
+      color: #1e293b; outline: none; font-family: inherit;
+    }
+    .syn-add-input:focus { border-color: #6366f1; }
+    .syn-edit-btns { display: flex; gap: 6px; margin-top: 2px; }
+    .syn-add-section {
+      border-top: 1px solid rgba(99,102,241,0.10); padding: 14px 16px;
+      background: rgba(248,247,255,0.6);
+    }
+    .syn-add-title { font-size: 11px; font-weight: 700; color: #6d28d9; margin-bottom: 10px; text-transform: uppercase; letter-spacing: 0.05em; }
+    .syn-add-grid { display: grid; grid-template-columns: 1fr 2fr; gap: 8px; margin-bottom: 8px; }
+    .syn-add-input {
+      padding: 7px 10px; border-radius: 8px; font-size: 12px;
+      border: 1px solid rgba(99,102,241,0.20); background: rgba(255,255,255,0.9);
+      color: #1e293b; outline: none; font-family: inherit;
+    }
+    .syn-add-input:focus { border-color: #6366f1; }
+    .syn-add-input::placeholder { color: #cbd5e1; }
+    .syn-save-btn {
+      width: 100%; padding: 9px; border: none; border-radius: 9px; font-size: 13px;
+      font-weight: 700; background: linear-gradient(135deg,#6d28d9,#4f46e5); color: #fff;
+      cursor: pointer; box-shadow: 0 2px 8px rgba(99,102,241,0.25); transition: opacity 0.12s;
+    }
+    .syn-save-btn:hover { opacity: 0.88; }
+
+    /* ── 장소 편집 오버레이 ── */
+    #place-edit-overlay {
+      display: none; position: fixed; inset: 0; z-index: 600;
+      background: rgba(15,23,42,0.55); backdrop-filter: blur(4px);
+      align-items: center; justify-content: center; padding: 16px;
+    }
+    #place-edit-overlay.show { display: flex; }
+    #place-edit-panel {
+      background: #fff; border-radius: 18px; width: 100%; max-width: 480px;
+      max-height: 90vh; display: flex; flex-direction: column; overflow: hidden;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.25);
+    }
+    .pe-header {
+      padding: 16px 20px 12px; border-bottom: 1px solid #e2e8f0;
+      display: flex; align-items: center; gap: 8px;
+    }
+    .pe-header h2 { font-size: 15px; font-weight: 700; color: #1e293b; flex: 1; }
+    .pe-close {
+      background: none; border: none; font-size: 18px; color: #94a3b8;
+      cursor: pointer; padding: 2px 6px; border-radius: 6px;
+    }
+    .pe-close:hover { background: #f1f5f9; }
+    .pe-body { flex: 1; overflow-y: auto; padding: 16px 20px; }
+    .pe-field { margin-bottom: 14px; }
+    .pe-label { font-size: 11px; font-weight: 700; color: #64748b; margin-bottom: 5px; text-transform: uppercase; letter-spacing: 0.04em; }
+    .pe-input {
+      width: 100%; padding: 9px 12px; border-radius: 9px; font-size: 13px;
+      border: 1px solid #e2e8f0; background: #f8fafc;
+      color: #1e293b; outline: none; font-family: inherit; box-sizing: border-box;
+    }
+    .pe-input:focus { border-color: #6366f1; background: #fff; }
+    .pe-input::placeholder { color: #cbd5e1; }
+    textarea.pe-input { min-height: 72px; resize: vertical; }
+    .pe-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .pe-footer {
+      padding: 12px 20px; border-top: 1px solid #e2e8f0; display: flex; gap: 8px;
+    }
+    .pe-save-btn {
+      flex: 1; padding: 10px; border: none; border-radius: 10px; font-size: 13px;
+      font-weight: 700; background: linear-gradient(135deg,#6366f1,#4f46e5); color: #fff;
+      cursor: pointer; transition: opacity 0.12s;
+    }
+    .pe-save-btn:hover { opacity: 0.88; }
+    .pe-cancel-btn {
+      padding: 10px 18px; border: 1px solid #e2e8f0; border-radius: 10px; font-size: 13px;
+      background: #f8fafc; color: #64748b; cursor: pointer; font-family: inherit;
+    }
+    .pe-cancel-btn:hover { background: #f1f5f9; }
+    .pe-section-title {
+      font-size: 11px; font-weight: 700; color: #6366f1; margin: 18px 0 10px;
+      text-transform: uppercase; letter-spacing: 0.05em; border-top: 1px solid #e2e8f0; padding-top: 14px;
+    }
+    .pe-review-item {
+      display: flex; align-items: flex-start; gap: 8px; padding: 8px 10px;
+      border-radius: 9px; background: #f8fafc; border: 1px solid #e2e8f0; margin-bottom: 6px;
+    }
+    .pe-review-info { flex: 1; font-size: 12px; color: #334155; line-height: 1.5; }
+    .pe-review-meta { font-size: 11px; color: #94a3b8; margin-bottom: 2px; }
+    .pe-review-del {
+      background: none; border: none; color: #e11d48; font-size: 14px; cursor: pointer;
+      padding: 2px 6px; border-radius: 6px; flex-shrink: 0; margin-top: 1px;
+    }
+    .pe-review-del:hover { background: #fff1f2; }
   </style>
 </head>
 <body>
@@ -1159,7 +1349,7 @@
 <!-- ── 사이드바 ── -->
 <div id="sidebar">
   <button id="dashboard-toggle" onclick="toggleDashboard()">
-    <span class="toggle-arrow">◀</span>
+    <span class="toggle-arrow">▶</span>
   </button>
   <div id="sidebar-inner">
   <div class="sidebar-tabs">
@@ -1208,6 +1398,9 @@
         📊 Excel 불러오기
       </button>
       <input type="file" id="excel-input" accept=".xlsx,.xls" onchange="loadExcel(event)" />
+      <button id="synonym-btn" class="admin-action-btn" onclick="openSynonymPanel()" style="display:none;">
+        🗂 키워드 관리
+      </button>
       <button id="admin-mode-btn" class="admin-action-btn" onclick="toggleAdminMode()">🔐 관리자 모드 전환</button>
     </div>
   </div>
@@ -1295,6 +1488,11 @@
     <div id="optional-fields">
       <div class="section-label">선택 입력</div>
 
+      <div class="form-field">
+        <div class="form-label">소분류 <span style="font-size:11px;color:#94a3b8;">(카카오 자동 입력)</span></div>
+        <input type="text" class="fi" id="f-subcategory" placeholder="예: 삼겹살, 초밥,롤, 파스타" />
+      </div>
+
       <div class="form-grid">
         <div class="form-field">
           <div class="form-label">최대 인원</div>
@@ -1349,8 +1547,8 @@
   </div>
 
   <div id="input-area">
-    <textarea id="user-input" placeholder="예) 10명이서 회식인데 1인당 3만원 예산이에요. 강남 근처 한식 어때요?" rows="1"></textarea>
-    <button id="send-btn" onclick="sendMessage()">
+    <textarea id="user-input" placeholder="장소 데이터를 불러오는 중..." rows="1" disabled></textarea>
+    <button id="send-btn" onclick="sendMessage()" disabled>
       <svg viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
     </button>
   </div>
@@ -1368,6 +1566,108 @@
     <div class="admin-modal-btns">
       <button id="admin-confirm-btn" onclick="confirmAdmin()">확인</button>
       <button id="admin-cancel-btn"  onclick="closeAdminModal()">취소</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── 장소 편집 오버레이 ── -->
+<div id="place-edit-overlay">
+  <div id="place-edit-panel">
+    <div class="pe-header">
+      <h2>✏️ 장소 정보 수정</h2>
+      <button class="pe-close" onclick="closePlaceEdit()">✕</button>
+    </div>
+    <div class="pe-body">
+      <div class="pe-grid">
+        <div class="pe-field" style="grid-column:1/-1">
+          <div class="pe-label">장소명</div>
+          <input class="pe-input" id="pe-name" placeholder="장소 이름" />
+        </div>
+        <div class="pe-field">
+          <div class="pe-label">카테고리</div>
+          <input class="pe-input" id="pe-category" placeholder="예: 한식, 이탈리안" />
+        </div>
+        <div class="pe-field">
+          <div class="pe-label">소분류</div>
+          <input class="pe-input" id="pe-subcategory" placeholder="예: 삼겹살, 초밥,롤" />
+        </div>
+        <div class="pe-field">
+          <div class="pe-label">전화번호</div>
+          <input class="pe-input" id="pe-phone" placeholder="02-1234-5678" />
+        </div>
+        <div class="pe-field" style="grid-column:1/-1">
+          <div class="pe-label">위치</div>
+          <input class="pe-input" id="pe-location" placeholder="주소 또는 지역명" />
+        </div>
+        <div class="pe-field">
+          <div class="pe-label">최대 인원</div>
+          <input class="pe-input" id="pe-maxpeople" type="number" placeholder="명" />
+        </div>
+        <div class="pe-field">
+          <div class="pe-label">1인당 가격 (원)</div>
+          <input class="pe-input" id="pe-price" type="number" placeholder="0" />
+        </div>
+        <div class="pe-field" style="grid-column:1/-1">
+          <div class="pe-label">분위기</div>
+          <input class="pe-input" id="pe-vibe" placeholder="예: 조용한, 활기찬, 프라이빗" />
+        </div>
+        <div class="pe-field">
+          <div class="pe-label">단체룸</div>
+          <input class="pe-input" id="pe-room" placeholder="예: 있음, 없음" />
+        </div>
+        <div class="pe-field" style="grid-column:1/-1">
+          <div class="pe-label">메모</div>
+          <textarea class="pe-input" id="pe-memo" placeholder="특이사항, 추천 메뉴 등"></textarea>
+        </div>
+      </div>
+
+      <div class="pe-section-title">📝 리뷰 관리</div>
+      <div id="pe-reviews"></div>
+    </div>
+    <div class="pe-footer">
+      <button class="pe-cancel-btn" onclick="closePlaceEdit()">취소</button>
+      <button class="pe-save-btn" onclick="savePlaceEdit()">저장</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── 키워드 관리 오버레이 ── -->
+<div id="synonym-overlay" onclick="if(event.target===this)closeSynonymPanel()">
+  <div id="synonym-panel">
+    <div class="syn-header">
+      <h2>키워드 관리</h2>
+      <button class="syn-close" onclick="closeSynonymPanel()">✕</button>
+    </div>
+    <div class="kw-tabs">
+      <button class="kw-tab-btn active" id="kw-tab-syn" onclick="switchKwTab('syn')">유사어 관리</button>
+      <button class="kw-tab-btn" id="kw-tab-sw" onclick="switchKwTab('sw')">불용어 관리</button>
+    </div>
+
+    <!-- 유사어 탭 -->
+    <div class="kw-tab-pane" id="kw-pane-syn">
+      <div class="syn-body" id="syn-body"></div>
+      <div class="syn-add-section">
+        <div class="syn-add-title">새 항목 추가</div>
+        <div class="syn-add-grid">
+          <input class="syn-add-input" id="syn-new-keyword" placeholder="대표 키워드 (예: 고기)" />
+          <input class="syn-add-input" id="syn-new-synonyms" placeholder="유사어 (쉼표로 구분: 삼겹살,갈비,구이)" />
+        </div>
+        <button class="syn-save-btn" onclick="saveSynonym()">저장</button>
+      </div>
+    </div>
+
+    <!-- 불용어 탭 -->
+    <div class="kw-tab-pane" id="kw-pane-sw" style="display:none;">
+      <div class="syn-body">
+        <div id="sw-tag-list" style="display:flex;flex-wrap:wrap;gap:6px;padding:12px 16px;"></div>
+      </div>
+      <div class="syn-add-section">
+        <div class="syn-add-title">새 불용어 추가</div>
+        <div class="syn-add-row">
+          <input class="syn-add-input" id="sw-new-word" placeholder="불용어 입력 후 추가" style="flex:1;" />
+          <button class="syn-save-btn" style="width:auto;padding:9px 16px;" onclick="addStopword()">추가</button>
+        </div>
+      </div>
     </div>
   </div>
 </div>
@@ -1409,6 +1709,43 @@
   let sb = null;
   function initSupabase() {
     if (!sb && window.supabase) sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+  }
+
+  /* ── 유사어 사전 ── */
+  let synonymMap = {};  // { '고기': ['삼겹살', '갈비', ...], ... }
+  let stopwords  = [];
+
+  async function loadSynonyms() {
+    initSupabase();
+    try {
+      const { data, error } = await sb.from('category_synonyms').select('keyword, synonyms');
+      if (error) throw error;
+      synonymMap = {};
+      (data || []).forEach(row => { synonymMap[row.keyword] = row.synonyms || []; });
+    } catch (e) {
+      console.warn('유사어 사전 로드 실패:', e.message);
+      synonymMap = {};
+    }
+  }
+
+  const STOPWORDS_FALLBACK = [
+    '먹고','먹을','먹자','먹어','먹는','싶다','싶어','싶은',
+    '가고','가자','갈까','갈게','가서','가는','가까운',
+    '하고','하자','할까','해줘','해요','합니다',
+    '좋은','좋아','좋겠','있는','없는',
+    '어디','뭐가','추천','알려','알려줘','주세요','주시면','부탁'
+  ];
+
+  async function loadStopwords() {
+    initSupabase();
+    try {
+      const { data, error } = await sb.from('stopwords').select('word');
+      if (error) throw error;
+      stopwords = (data || []).map(r => r.word);
+    } catch (e) {
+      console.warn('불용어 로드 실패:', e.message);
+      stopwords = [...STOPWORDS_FALLBACK];
+    }
   }
 
   /* ── 상태 ── */
@@ -1510,13 +1847,23 @@
     res._docs = docs;
   }
 
+  /* 카카오 category_name(대>중>소) → { category: 중분류, subCategory: 소분류 } */
+  function normalizeKakaoCategory(categoryName) {
+    const parts = categoryName.split('>').map(s => s.trim()).filter(Boolean);
+    // parts[0] = 대분류(음식점 등), parts[1] = 중분류, parts[2] = 소분류
+    const category    = parts.length >= 2 ? parts[1] : parts[0] || '';
+    const subCategory = parts.length >= 3 ? parts.slice(2).join(' > ') : '';
+    return { category, subCategory };
+  }
+
   function selectPlace(i) {
     const docs = document.getElementById('search-results')._docs;
     const d    = docs[i];
+    const { category, subCategory } = normalizeKakaoCategory(d.category_name);
     selectedKakaoPlace = {
       name:     d.place_name,
       location: d.road_address_name || d.address_name,
-      category: d.category_name.split('>').pop().trim(),
+      category,
       phone:    d.phone,
       kakaoUrl: d.place_url,
       lat:      d.y,
@@ -1530,6 +1877,10 @@
     document.getElementById('spi-phone').textContent  = d.phone ? '📞 ' + d.phone : '';
     document.getElementById('spi-link-wrap').innerHTML = d.place_url
       ? `<a href="${d.place_url}" target="_blank" class="spi-link">🗺️ 카카오맵에서 보기</a>` : '';
+
+    // 소분류 자동 주입
+    const subEl = document.getElementById('f-subcategory');
+    if (subEl) subEl.value = subCategory;
 
     document.getElementById('selected-place-info').classList.add('show');
     document.getElementById('search-results').classList.remove('show');
@@ -1589,6 +1940,7 @@
       lat:      selectedKakaoPlace?.lat      || '',
       lng:      selectedKakaoPlace?.lng      || '',
       kakaoId:  selectedKakaoPlace?.kakaoId  || '',
+      subCategory: document.getElementById('f-subcategory').value.trim(),
       maxPeople: document.getElementById('f-maxPeople').value || '',
       price:     document.getElementById('f-price').value     || '',
       vibe:      document.getElementById('f-vibe').value.trim(),
@@ -1609,7 +1961,7 @@
     ['f-recommender','f-dept','f-review','f-vibe','f-memo']
       .forEach(id => { const el = document.getElementById(id); if(el) el.value = ''; });
     const roomEl = document.getElementById('f-room'); if(roomEl) roomEl.value = '';
-    ['f-maxPeople','f-price'].forEach(id => { const el = document.getElementById(id); if(el) el.value = ''; });
+    ['f-subcategory','f-maxPeople','f-price'].forEach(id => { const el = document.getElementById(id); if(el) el.value = ''; });
     rating = 0;
     document.querySelectorAll('.star').forEach(s => s.classList.remove('on'));
     document.getElementById('star-val').textContent = '선택 안 함';
@@ -1634,6 +1986,7 @@
       lat:        p.lat          || '',
       lng:        p.lng          || '',
       kakao_id:   p.kakaoId      || '',
+      sub_category: p.subCategory  || '',
       max_people: p.maxPeople    || '',
       price:      p.price        || '',
       vibe:       p.vibe         || '',
@@ -1655,6 +2008,7 @@
       lat:        r.lat,
       lng:        r.lng,
       kakaoId:    r.kakao_id,
+      subCategory: r.sub_category || '',
       maxPeople:  r.max_people,
       price:      r.price,
       vibe:       r.vibe,
@@ -1836,7 +2190,7 @@
             <div class="pc-body">
               <div class="pc-title-row">
                 <div class="pc-name">${esc(p.name)}</div>
-                ${isAdminMode() ? `<button class="btn-card-del" onclick="deletePlace(${i})">✕</button>` : ''}
+                ${isAdminMode() ? `<div class="pc-admin-actions"><button class="btn-card-edit" onclick="openPlaceEdit(${i})">수정</button><button class="btn-card-del" onclick="deletePlace(${i})">삭제</button></div>` : ''}
               </div>
               <div class="pc-badges">
                 ${p.category ? `<span class="tag">${esc(p.category)}</span>` : ''}
@@ -1958,6 +2312,7 @@
     btn.textContent = '🔓 관리자 모드 해지';
     btn.classList.add('active');
     document.getElementById('excel-upload-btn').style.display = 'flex';
+    document.getElementById('synonym-btn').style.display = 'flex';
     renderPlaceList();
     showToast('관리자 모드가 활성화됐습니다');
   }
@@ -1968,8 +2323,276 @@
     btn.textContent = '🔐 관리자 모드 전환';
     btn.classList.remove('active');
     document.getElementById('excel-upload-btn').style.display = 'none';
+    document.getElementById('synonym-btn').style.display = 'none';
     renderPlaceList();
     showToast('관리자 모드가 해제됐습니다');
+  }
+
+  /* ── 유사어 관리 ── */
+  let synOpenSet = new Set(); // 수정 모드 열린 키워드
+
+  function openSynonymPanel() {
+    synOpenSet = new Set();
+    switchKwTab('syn');
+    renderSynonymList();
+    renderStopwordList();
+    document.getElementById('synonym-overlay').classList.add('show');
+  }
+
+  function switchKwTab(tab) {
+    ['syn', 'sw'].forEach(t => {
+      document.getElementById(`kw-pane-${t}`).style.display = t === tab ? 'flex' : 'none';
+      document.getElementById(`kw-tab-${t}`).classList.toggle('active', t === tab);
+    });
+  }
+
+  /* ── 불용어 관리 ── */
+  function renderStopwordList() {
+    const el = document.getElementById('sw-tag-list');
+    if (!el) return;
+    if (!stopwords.length) {
+      el.innerHTML = '<span style="font-size:11px;color:#94a3b8;">등록된 불용어가 없습니다.</span>';
+      return;
+    }
+    el.innerHTML = stopwords.map((w, i) => `
+      <span style="display:inline-flex;align-items:center;gap:3px;background:rgba(239,68,68,0.08);color:#b91c1c;border-radius:5px;padding:2px 4px 2px 8px;font-size:11px;font-weight:600;">
+        ${esc(w)}
+        <button onclick="deleteStopword(${i})" style="background:none;border:none;cursor:pointer;color:#fca5a5;font-size:13px;line-height:1;padding:0 2px;border-radius:3px;" title="삭제">×</button>
+      </span>`).join('');
+  }
+
+  async function deleteStopword(i) {
+    const word = stopwords[i];
+    const { error } = await sb.from('stopwords').delete().eq('word', word);
+    if (error) { showToast('삭제 실패: ' + error.message); return; }
+    stopwords.splice(i, 1);
+    renderStopwordList();
+    showToast('불용어가 업데이트됐습니다.');
+  }
+
+  async function addStopword() {
+    const input = document.getElementById('sw-new-word');
+    const word  = input.value.trim();
+    if (!word) return;
+    if (stopwords.includes(word)) { showToast('이미 등록된 불용어입니다.'); return; }
+    const { error } = await sb.from('stopwords').insert({ word });
+    if (error) { showToast('추가 실패: ' + error.message); return; }
+    stopwords.push(word);
+    input.value = '';
+    renderStopwordList();
+    showToast('불용어가 업데이트됐습니다.');
+  }
+
+  function closeSynonymPanel() {
+    document.getElementById('synonym-overlay').classList.remove('show');
+    synOpenSet = new Set();
+  }
+
+  function _synEntries() { return Object.entries(synonymMap); }
+
+  function renderSynonymList() {
+    const body = document.getElementById('syn-body');
+    const entries = _synEntries();
+    if (!entries.length) {
+      body.innerHTML = '<div style="text-align:center;padding:24px;font-size:12px;color:#94a3b8;">등록된 유사어가 없습니다.</div>';
+      return;
+    }
+    body.innerHTML = entries.map(([kw, syns], idx) => {
+      const isOpen = synOpenSet.has(kw);
+      const listHtml = isOpen
+        ? syns.map((s, si) => `<span class="syn-chip">${esc(s)}<button class="syn-chip-del" data-idx="${idx}" data-si="${si}">×</button></span>`).join('')
+        : syns.map(s => `<span class="syn-tag">${esc(s)}</span>`).join('');
+      return `
+      <div class="syn-card">
+        <div class="syn-card-row">
+          <div class="syn-keyword">${esc(kw)}</div>
+          <div class="syn-list">
+            ${listHtml}
+            ${isOpen ? `<div class="syn-add-row">
+              <input class="syn-add-input" id="syn-add-val-${idx}" placeholder="새 유사어 입력" />
+              <button class="syn-btn syn-btn-edit" data-action="add" data-idx="${idx}">추가</button>
+            </div>` : ''}
+          </div>
+          <div class="syn-actions">
+            <button class="syn-btn syn-btn-edit" data-action="edit" data-idx="${idx}">${isOpen ? '닫기' : '수정'}</button>
+            <button class="syn-btn syn-btn-del"  data-action="delete" data-idx="${idx}">삭제</button>
+          </div>
+        </div>
+      </div>`;
+    }).join('');
+
+    body.onclick = e => {
+      const btn   = e.target.closest('[data-action]');
+      const chipX = e.target.closest('.syn-chip-del');
+      if (btn)   synHandleAction(btn.dataset.action, +btn.dataset.idx);
+      if (chipX) synDeleteChip(+chipX.dataset.idx, +chipX.dataset.si);
+    };
+    body.onkeydown = e => {
+      if (e.key !== 'Enter') return;
+      const input = e.target.closest('.syn-add-input');
+      if (!input) return;
+      synHandleAction('add', +input.id.replace('syn-add-val-', ''));
+    };
+  }
+
+  function synHandleAction(action, idx) {
+    const [kw] = _synEntries()[idx];
+    if (action === 'edit') {
+      const wasOpen = synOpenSet.has(kw);
+      synOpenSet.clear();
+      if (!wasOpen) synOpenSet.add(kw);
+      renderSynonymList();
+      if (synOpenSet.has(kw)) setTimeout(() => document.getElementById(`syn-add-val-${idx}`)?.focus(), 0);
+    } else if (action === 'add') {
+      synAddChip(idx, kw);
+    } else if (action === 'delete') {
+      deleteSynonym(kw);
+    }
+  }
+
+  async function synDeleteChip(idx, si) {
+    const [kw] = _synEntries()[idx];
+    const syns = [...synonymMap[kw]];
+    syns.splice(si, 1);
+    if (!syns.length) { showToast('유사어를 최소 1개 이상 유지해야 합니다.'); return; }
+    const { error } = await sb.from('category_synonyms')
+      .update({ synonyms: syns, updated_at: new Date().toISOString() }).eq('keyword', kw);
+    if (error) { showToast('삭제 실패: ' + error.message); return; }
+    synonymMap[kw] = syns;
+    renderSynonymList();
+    setTimeout(() => document.getElementById(`syn-add-val-${idx}`)?.focus(), 0);
+  }
+
+  async function synAddChip(idx, kw) {
+    const input = document.getElementById(`syn-add-val-${idx}`);
+    const val   = input?.value.trim();
+    if (!val) return;
+    const syns = [...synonymMap[kw]];
+    if (syns.includes(val)) { showToast('이미 등록된 유사어입니다.'); return; }
+    syns.push(val);
+    const { error } = await sb.from('category_synonyms')
+      .update({ synonyms: syns, updated_at: new Date().toISOString() }).eq('keyword', kw);
+    if (error) { showToast('추가 실패: ' + error.message); return; }
+    synonymMap[kw] = syns;
+    renderSynonymList();
+    setTimeout(() => document.getElementById(`syn-add-val-${idx}`)?.focus(), 0);
+  }
+
+  async function deleteSynonym(kw) {
+    if (!confirm(`"${kw}" 키워드 전체를 삭제할까요?`)) return;
+    const { error } = await sb.from('category_synonyms').delete().eq('keyword', kw);
+    if (error) { showToast('삭제 실패: ' + error.message); return; }
+    delete synonymMap[kw];
+    delete synEditStates[kw];
+    renderSynonymList();
+    showToast(`"${kw}" 유사어가 삭제됐습니다.`);
+  }
+
+  async function saveSynonym() {
+    const kw   = document.getElementById('syn-new-keyword').value.trim();
+    const raw  = document.getElementById('syn-new-synonyms').value;
+    const syns = raw.split(',').map(s => s.trim()).filter(Boolean);
+    if (!kw)          { showToast('대표 키워드를 입력해주세요.'); return; }
+    if (!syns.length) { showToast('유사어를 하나 이상 입력해주세요.'); return; }
+    const { error } = await sb.from('category_synonyms').upsert({ keyword: kw, synonyms: syns, updated_at: new Date().toISOString() });
+    if (error) { showToast('저장 실패: ' + error.message); return; }
+    synonymMap[kw] = syns;
+    document.getElementById('syn-new-keyword').value  = '';
+    document.getElementById('syn-new-synonyms').value = '';
+    renderSynonymList();
+    showToast('유사어가 저장됐습니다.');
+  }
+
+  /* ── 장소 편집 ── */
+  let editingPlaceIdx = null;
+
+  function openPlaceEdit(i) {
+    editingPlaceIdx = i;
+    const p = places[i];
+    document.getElementById('pe-name').value      = p.name      || '';
+    document.getElementById('pe-category').value    = p.category    || '';
+    document.getElementById('pe-subcategory').value = p.subCategory || '';
+    document.getElementById('pe-phone').value       = p.phone       || '';
+    document.getElementById('pe-location').value  = p.location  || '';
+    document.getElementById('pe-maxpeople').value = p.maxPeople || '';
+    document.getElementById('pe-price').value     = p.price     || '';
+    document.getElementById('pe-vibe').value      = p.vibe      || '';
+    document.getElementById('pe-room').value      = p.room      || '';
+    document.getElementById('pe-memo').value      = p.memo      || '';
+    renderPlaceEditReviews(i);
+    document.getElementById('place-edit-overlay').classList.add('show');
+  }
+
+  function closePlaceEdit() {
+    document.getElementById('place-edit-overlay').classList.remove('show');
+    editingPlaceIdx = null;
+  }
+
+  /* 드래그로 인한 오버레이 이탈 방지:
+     mousedown이 배경에서 시작하고 mouseup도 배경일 때만 닫힘 */
+  (function() {
+    let downOnBackdrop = false;
+    const overlay = document.getElementById('place-edit-overlay');
+    overlay.addEventListener('mousedown', e => {
+      downOnBackdrop = e.target === overlay;
+    });
+    overlay.addEventListener('mouseup', e => {
+      if (downOnBackdrop && e.target === overlay) closePlaceEdit();
+      downOnBackdrop = false;
+    });
+  })();
+
+  function renderPlaceEditReviews(i) {
+    const p = places[i];
+    const el = document.getElementById('pe-reviews');
+    if (!p.reviews.length) {
+      el.innerHTML = '<div style="font-size:12px;color:#94a3b8;padding:6px 0;">등록된 리뷰가 없습니다.</div>';
+      return;
+    }
+    el.innerHTML = p.reviews.map((r, ri) => `
+      <div class="pe-review-item">
+        <div class="pe-review-info">
+          <div class="pe-review-meta">${esc(r.recommender)} · ${esc(r.dept)} · ${'★'.repeat(r.rating)} · ${r.date || ''}</div>
+          ${r.text ? `<div>${esc(r.text)}</div>` : '<div style="color:#94a3b8;font-size:11px;">리뷰 내용 없음</div>'}
+        </div>
+        <button class="pe-review-del" onclick="deleteReview(${i},${ri})" title="리뷰 삭제">✕</button>
+      </div>
+    `).join('');
+  }
+
+  async function deleteReview(placeIdx, reviewIdx) {
+    if (!confirm('이 리뷰를 삭제할까요?')) return;
+    const p = places[placeIdx];
+    const backup = p.reviews.splice(reviewIdx, 1)[0];
+    const { error } = await sb.from('places').update({ reviews: p.reviews }).eq('id', p.id);
+    if (error) { p.reviews.splice(reviewIdx, 0, backup); showToast('삭제 실패: ' + error.message); return; }
+    renderPlaceEditReviews(placeIdx);
+    renderPlaceList();
+    showToast('리뷰가 삭제됐습니다.');
+  }
+
+  async function savePlaceEdit() {
+    const i = editingPlaceIdx;
+    if (i === null) return;
+    const p = places[i];
+    const updates = {
+      name:       document.getElementById('pe-name').value.trim(),
+      category:     document.getElementById('pe-category').value.trim(),
+      sub_category: document.getElementById('pe-subcategory').value.trim(),
+      phone:        document.getElementById('pe-phone').value.trim(),
+      location:   document.getElementById('pe-location').value.trim(),
+      max_people: document.getElementById('pe-maxpeople').value.trim(),
+      price:      document.getElementById('pe-price').value.trim(),
+      vibe:       document.getElementById('pe-vibe').value.trim(),
+      room:       document.getElementById('pe-room').value.trim(),
+      memo:       document.getElementById('pe-memo').value.trim(),
+    };
+    if (!updates.name) { showToast('장소명은 필수입니다.'); return; }
+    const { error } = await sb.from('places').update(updates).eq('id', p.id);
+    if (error) { showToast('저장 실패: ' + error.message); return; }
+    closePlaceEdit();
+    await loadPlaces();
+    showToast('장소 정보가 수정됐습니다.');
   }
 
   function showAdminModal() {
@@ -2214,7 +2837,7 @@
       rows.push(placeToRow({
         id:        Date.now() + offset++,
         name:      doc ? doc.place_name : r.name,
-        category:  r.category || (doc ? doc.category_name.split('>').pop().trim() : ''),
+        category:  r.category || (doc ? normalizeKakaoCategory(doc.category_name).category : ''),
         location:  doc ? (doc.road_address_name || doc.address_name) : '',
         phone:     doc ? doc.phone    : '',
         kakaoUrl:  doc ? doc.place_url : '',
@@ -2244,26 +2867,70 @@
   }
 
   /* ── Groq 채팅 ── */
-  /* 질문과 관련 있는 장소만 필터링 (최대 8개) */
+  /* 유사어 확장 키워드로 장소 필터링 (최대 8개) */
   function filterRelevantPlaces(query) {
     if (!places.length) return [];
     const q = query.toLowerCase();
 
-    /* 질문에서 키워드 추출 */
-    const keywords = q.match(/[가-힣a-z]+/g) || [];
+    /* 1. 원본 키워드 추출 + 불용어 제거 */
+    const keywords = (q.match(/[가-힣a-z]+/g) || [])
+      .filter(kw => !stopwords.includes(kw) && kw.length >= 2);
 
-    /* 각 장소에 관련도 점수 부여 */
-    const scored = places.map(p => {
-      const target = [p.name, p.category, p.location, p.features,
-        ...p.reviews.map(r => r.text)]
-        .join(' ').toLowerCase();
-      const score = keywords.reduce((acc, kw) => acc + (target.includes(kw) ? 1 : 0), 0);
-      return { place: p, score };
+    if (!keywords.length) {
+      return [...places].sort((a, b) => {
+        const ra = a.reviews.length ? a.reviews.reduce((s,r) => s+r.rating,0)/a.reviews.length : 0;
+        const rb = b.reviews.length ? b.reviews.reduce((s,r) => s+r.rating,0)/b.reviews.length : 0;
+        return rb - ra;
+      }).slice(0, 8);
+    }
+
+    /* 2. 유사어 확장 */
+    const expandedSet = new Set(keywords);
+    keywords.forEach(kw => {
+      Object.entries(synonymMap).forEach(([key, syns]) => {
+        if (key.includes(kw) || kw.includes(key)) {
+          syns.forEach(s => expandedSet.add(s.toLowerCase()));
+        }
+      });
     });
+    const expanded = [...expandedSet];
 
-    /* 관련도 높은 순 정렬, 점수 0이면 전체 반환 (조건 미지정 쿼리) */
-    const hasMatch = scored.some(s => s.score > 0);
-    return (hasMatch ? scored.filter(s => s.score > 0) : scored)
+    /* 3. 점수 계산 — 원본 매칭 +2, 확장 매칭 +1
+         고점수(≥2) 장소 5개 채워지면 나머지 순회 중단 */
+    const HIGH_SCORE_THRESHOLD = 2;
+    const HIGH_SCORE_LIMIT = 5;
+    const scored = [];
+    let highScoreCount = 0;
+
+    for (const p of places) {
+      const memoReviewText = [p.memo || '', ...p.reviews.map(r => r.text || '')].join(' ').toLowerCase();
+      const reverseParentKeys = new Set();
+      Object.entries(synonymMap).forEach(([key, syns]) => {
+        if (syns.some(s => memoReviewText.includes(s.toLowerCase()))) {
+          reverseParentKeys.add(key.toLowerCase());
+        }
+      });
+
+      const target = [p.name, p.category, p.location, p.vibe, p.memo,
+        ...p.reviews.map(r => r.text || ''),
+        ...[...reverseParentKeys]]
+        .join(' ').toLowerCase();
+
+      const directScore   = keywords.reduce((acc, kw) => acc + (target.includes(kw) ? 2 : 0), 0);
+      const expandedScore = expanded.filter(kw => !keywords.includes(kw))
+                              .reduce((acc, kw) => acc + (target.includes(kw) ? 1 : 0), 0);
+      const score = directScore + expandedScore;
+
+      if (score > 0) {
+        scored.push({ place: p, score });
+        if (score >= HIGH_SCORE_THRESHOLD) highScoreCount++;
+        if (highScoreCount >= HIGH_SCORE_LIMIT) break;
+      }
+    }
+
+    /* 4. 결과 반환 — 점수 없으면 빈 배열 */
+    if (!scored.length) return [];
+    return scored
       .sort((a, b) => b.score - a.score)
       .slice(0, 8)
       .map(s => s.place);
@@ -2285,6 +2952,7 @@
 - 과도한 이모지 남발은 자제하고, 포인트가 되는 곳에서만 사용합니다.
 - 답변은 약 200자 내외로 간결하게 작성합니다. 불필요한 부연 설명은 생략합니다.
 - 모든 답변은 반드시 한국어로만 작성합니다.
+- 장소명 앞뒤에 *, **, #, __ 등 마크다운 기호를 절대 사용하지 않습니다. 장소명은 항상 plain text로만 표기합니다.
 - 영어, 중국어, 베트남어 등 다른 언어의 단어나 문자가 절대 섞이지 않도록 합니다.
 - 리뷰 내용을 인용하거나 요약할 때도 한국어로만 표현합니다.
 `.trim();
@@ -2303,7 +2971,33 @@
 - 데이터가 없는 필드는 표시하지 마세요.
 `;
 
-    const relevant = places;
+    const relevant = filterRelevantPlaces(query);
+
+    /* 이미 추천된 장소 추출 — assistant 메시지에서 장소명 탐지 */
+    const mentionedNames = new Set();
+    history.forEach(msg => {
+      if (msg.role === 'assistant') {
+        places.forEach(p => {
+          if (p.name && msg.content.includes(p.name)) mentionedNames.add(p.name);
+        });
+      }
+    });
+    const excludeNote = mentionedNames.size > 0
+      ? `\n[이미 추천한 장소 — 재추천 금지]\n이전 대화에서 이미 추천한 장소는 다시 추천하지 마세요.\n"다른 곳", "또 다른 곳", "다른 추천" 요청 시 아래 장소를 반드시 제외하세요: ${[...mentionedNames].join(', ')}`
+      : '';
+
+    if (relevant.length === 0 && query) {
+      return `${persona}
+
+${dataNote}
+[안내]
+젝스인이 요청한 내용(${query})과 관련된 장소가 현재 목록에 등록되어 있지 않습니다.
+등록된 카테고리: ${categoryList}
+
+관련 장소가 없다고 솔직하게 안내하고, 등록된 카테고리 중 비슷한 것이 있다면 대안으로 제안해도 좋습니다.
+단, 관련 없는 장소를 억지로 추천하지 마세요.`;
+    }
+
     const list = relevant.map((p, i) => {
       const avgRating = p.reviews.length
         ? (p.reviews.reduce((s,r) => s + r.rating, 0) / p.reviews.length).toFixed(1) : null;
@@ -2311,7 +3005,8 @@
       const topReview = p.reviews.filter(r => r.text && r.text.trim()).sort((a, b) => b.rating - a.rating)[0];
       const reviewSummary = topReview ? `"${topReview.text.trim()}" - ${topReview.recommender}, ${topReview.rating}점` : '';
       let s = `${i+1}. ${p.name}`;
-      if (p.category)  s += ` | 종류: ${p.category}`;
+      if (p.category)    s += ` | 종류: ${p.category}`;
+      if (p.subCategory) s += ` | 소분류: ${p.subCategory}`;
       if (p.location)  s += ` | 위치: ${p.location}`;
       if (p.maxPeople) s += ` | 최대인원: ${p.maxPeople}명`;
       if (p.price)     s += ` | 1인당: ${Number(p.price).toLocaleString()}원`;
@@ -2325,6 +3020,7 @@
     }).join('\n');
 
     return `${persona}
+${excludeNote}
 
 [현재 등록된 카테고리 목록]
 ${categoryList}
@@ -2334,7 +3030,7 @@ ${categoryList}
 유사한 카테고리 전부 포함. 정확한 단어 일치가 아닌 의미 기반으로 판단하세요.
 
 ${dataNote}
-[등록된 회식 장소 목록]
+[등록된 회식 장소 목록]${relevant.length < places.length ? `\n(질문과 관련된 ${relevant.length}개 장소만 표시. 전체 ${places.length}개 중 선별됨)` : ''}
 ${list}
 
 [답변 모드 — 질문 의도에 따라 구분]
@@ -2362,16 +3058,15 @@ ${list}
 - 모드 판단은 내부적으로만 처리하고 "모드 A로 전환합니다", "모드 B로 전환합니다" 같은 내부 동작은 절대 사용자에게 노출하지 않습니다.
 - 추천 결과는 아래 형식으로 작성하세요. 최대 3곳까지 추천:
 
-  **[장소명]**
-  음식 카테고리와 실제 리뷰 내용을 바탕으로 1~2문장으로 설명하세요.
-  단순히 "맛있다"가 아니라 리뷰에서 언급된 구체적인 특징
-  (예: 음식 스타일, 맛의 특징, 분위기, 재방문 이유 등)을 중심으로 작성.
-  실제 리뷰가 없으면 DB의 카테고리(category), 분위기(vibe), 메모(memo) 순으로 활용.
-  위치, 인원, 가격 정보는 표시하지 않음.
-
-  각 장소는 빈 줄로 구분. 장소명을 설명 안에 다시 언급하지 말 것.
-  첫 문장은 사용자 요청에 공감하는 자연스러운 도입으로 시작.
-  마지막은 한 줄 코멘트로 가볍게 마무리.
+  - 장소명과 설명을 자연스럽게 한 문장으로 엮어서 작성하세요.
+  - 장소명을 문장 중간에 자연스럽게 녹여서 표현하세요.
+    예) "고기라면 역시 전설의우대갈비 강남직영점이죠. 고기 맛이 일품이고..."
+    예) "분위기까지 챙기고 싶다면 교대이층집을 추천해요. 단체룸이 있어서..."
+  - 각 장소는 2~3문장으로 구성하고, 줄바꿈으로 구분하세요.
+  - 리뷰나 DB 데이터 기반의 구체적인 특징을 반드시 포함하세요.
+  - 단순히 "맛있다", "좋다" 같은 막연한 표현은 피하세요.
+  - 첫 문장은 사용자 요청에 공감하는 자연스러운 도입으로 시작.
+  - 마지막은 가볍게 마무리하는 한 줄 코멘트로 끝내세요.
 
 ■ 모드 B : 장소 세부 정보 (메뉴, 인원, 분위기, 주차, 예약 방법 등)
 - 해당 장소의 DB 데이터(리뷰, 분위기, 메모, 카테고리 등)를 최대한 활용합니다.
@@ -2379,7 +3074,9 @@ ${list}
 - DB에 없는 정보를 지어내거나 추측해서 답하지 않습니다.
 - 다른 장소의 데이터는 절대 섞지 않습니다.
 - 위치, 최대인원, 1인당 가격 등 상세 정보는 모드 B에서만 제공합니다.
-  사용자가 특정 장소에 대해 구체적으로 물어볼 때 해당 데이터를 상세하게 안내하세요.`;
+  사용자가 특정 장소에 대해 구체적으로 물어볼 때 해당 데이터를 상세하게 안내하세요.
+
+Let's think step by step.`;
   }
 
   function addBotMsg(text, isError = false) {
@@ -2477,13 +3174,9 @@ ${list}
 
   function toggleDashboard() {
     if (isMobile()) {
-      const isOpen = sidebar.classList.contains('force-show');
-      sidebar.classList.toggle('force-show', !isOpen);
-      arrow.textContent = isOpen ? '◀' : '▶';
+      sidebar.classList.toggle('force-show');
     } else {
-      const isCollapsed = sidebar.classList.contains('collapsed');
-      sidebar.classList.toggle('collapsed', !isCollapsed);
-      arrow.textContent = isCollapsed ? '▶' : '◀';
+      sidebar.classList.toggle('collapsed');
     }
   }
 
@@ -2492,9 +3185,17 @@ ${list}
     else sidebar.classList.remove('collapsed');
   });
 
-  document.addEventListener('DOMContentLoaded', () => {
+  document.addEventListener('DOMContentLoaded', async () => {
     sessionStorage.removeItem('isAdmin');
-    initSupabase(); loadPlaces(); initPollMode();
+    initSupabase();
+    initPollMode();
+
+    await Promise.all([loadSynonyms(), loadStopwords(), loadPlaces()]);
+
+    const inputEl = document.getElementById('user-input');
+    const sendBtn = document.getElementById('send-btn');
+    if (inputEl) { inputEl.disabled = false; inputEl.placeholder = '회식 조건을 말씀해주세요...'; }
+    if (sendBtn) sendBtn.disabled = false;
   });
 
   document.addEventListener('click', (e) => {
