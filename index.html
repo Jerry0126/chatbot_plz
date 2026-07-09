@@ -2872,8 +2872,10 @@
     if (!places.length) return [];
     const q = query.toLowerCase();
 
-    /* 1. 원본 키워드 추출 + 불용어 제거 */
+    /* 1. 원본 키워드 추출 + 조사 제거 + 불용어 제거 */
+    const JOSA = /(?:까지|에서|으로|이랑|이나|한테|에게|부터|처럼|보다|마다|와|과|을|를|이|가|은|는|도|만|로|의|에)$/;
     const keywords = (q.match(/[가-힣a-z]+/g) || [])
+      .map(kw => kw.replace(JOSA, ''))
       .filter(kw => !stopwords.includes(kw) && kw.length >= 2);
 
     if (!keywords.length) {
@@ -3004,18 +3006,22 @@ ${dataNote}
       const meals = [...new Set(p.reviews.flatMap(r => r.mealTime))].join('/');
       const topReview = p.reviews.filter(r => r.text && r.text.trim()).sort((a, b) => b.rating - a.rating)[0];
       const reviewSummary = topReview ? `"${topReview.text.trim()}" - ${topReview.recommender}, ${topReview.rating}점` : '';
+      const walkMin = (p.lat && p.lng && baseCoord.y && baseCoord.x)
+        ? Math.round(calcDistance(+baseCoord.y, +baseCoord.x, +p.lat, +p.lng) / 67)
+        : null;
       let s = `${i+1}. ${p.name}`;
-      if (p.category)    s += ` | 종류: ${p.category}`;
-      if (p.subCategory) s += ` | 소분류: ${p.subCategory}`;
-      if (p.location)  s += ` | 위치: ${p.location}`;
-      if (p.maxPeople) s += ` | 최대인원: ${p.maxPeople}명`;
-      if (p.price)     s += ` | 1인당: ${Number(p.price).toLocaleString()}원`;
-      if (p.vibe)      s += ` | 분위기: ${p.vibe}`;
-      if (p.room)      s += ` | 단체룸: ${p.room}`;
-      if (p.memo)      s += ` | 메모: ${p.memo}`;
-      if (avgRating)   s += ` | 평균별점: ${avgRating}점`;
-      if (meals)       s += ` | 추천시간대: ${meals}`;
-      if (reviewSummary) s += ` | 대표리뷰: ${reviewSummary}`;
+      if (p.category)       s += ` | 종류: ${p.category}`;
+      if (p.subCategory)    s += ` | 소분류: ${p.subCategory}`;
+      if (p.location)       s += ` | 위치: ${p.location}`;
+      if (walkMin !== null) s += ` | 화인타워 도보: 약 ${walkMin}분`;
+      if (p.maxPeople)      s += ` | 최대인원: ${p.maxPeople}명`;
+      if (p.price)          s += ` | 1인당: ${Number(p.price).toLocaleString()}원`;
+      if (p.vibe)           s += ` | 분위기: ${p.vibe}`;
+      if (p.room)           s += ` | 단체룸: ${p.room}`;
+      if (p.memo)           s += ` | 메모: ${p.memo}`;
+      if (avgRating)        s += ` | 평균별점: ${avgRating}점`;
+      if (meals)            s += ` | 추천시간대: ${meals}`;
+      if (reviewSummary)    s += ` | 대표리뷰: ${reviewSummary}`;
       return s;
     }).join('\n');
 
@@ -3065,8 +3071,16 @@ ${list}
   - 각 장소는 2~3문장으로 구성하고, 줄바꿈으로 구분하세요.
   - 리뷰나 DB 데이터 기반의 구체적인 특징을 반드시 포함하세요.
   - 단순히 "맛있다", "좋다" 같은 막연한 표현은 피하세요.
+  - 위치, 인원, 가격, 도보 시간(거리) 정보는 절대 언급하지 마세요. 거리는 별도 질문 시에만 제공합니다.
   - 첫 문장은 사용자 요청에 공감하는 자연스러운 도입으로 시작.
   - 마지막은 가볍게 마무리하는 한 줄 코멘트로 끝내세요.
+
+■ 거리·소요시간 질문 ("얼마나 걸려?", "멀어?", "도보로?", "가깝나?" 등)
+- 위 장소 목록의 "화인타워 도보" 데이터를 그대로 사용하세요.
+- 반드시 "화인타워에서 도보로 약 N분"으로 답하세요.
+- 좌표 데이터가 없어 도보 시간이 없는 장소는 "도보 거리 정보가 등록되어 있지 않아요"라고 안내하세요.
+- 도보 시간 외의 교통수단(버스, 택시 등)은 임의로 추측하지 마세요.
+- 거리·소요시간을 묻지 않은 일반 추천(모드 A)에서는 도보 시간을 언급하지 마세요.
 
 ■ 모드 B : 장소 세부 정보 (메뉴, 인원, 분위기, 주차, 예약 방법 등)
 - 해당 장소의 DB 데이터(리뷰, 분위기, 메모, 카테고리 등)를 최대한 활용합니다.
