@@ -799,13 +799,10 @@
       .fb-cat-item:hover { background: none !important; }
     }
 
-    /* 모바일 오버레이 — 사이드바 열릴 때만 표시 */
+    /* 모바일 오버레이 — 사이드바 열릴 때만 표시 (블러/딤 없이 클릭 닫기만 유지) */
     #sidebar-overlay {
       display: none;
       position: fixed; inset: 0;
-      background: rgba(15,15,26,0.30);
-      backdrop-filter: blur(2px);
-      -webkit-backdrop-filter: blur(2px);
       z-index: 199;
     }
 
@@ -851,6 +848,33 @@
       box-shadow: 0 2px 12px rgba(0,0,0,0.06);
     }
     .error .bubble { background: rgba(254,226,226,0.75); color: #dc2626; border: 1px solid rgba(252,165,165,0.4); }
+
+    /* ── 챗 인라인 장소 카드 ── */
+    .inline-place-card {
+      margin-left: 38px;
+      margin-top: 4px;
+      background: rgba(255,255,255,0.90);
+      border: 1px solid rgba(99,102,241,0.18);
+      border-radius: 12px;
+      padding: 11px 14px;
+      cursor: pointer;
+      max-width: 280px;
+      animation: fadeIn 0.22s ease;
+      transition: box-shadow 0.18s, transform 0.18s;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.06);
+    }
+    .inline-place-card:hover { box-shadow: 0 4px 18px rgba(99,102,241,0.18); transform: translateY(-1px); }
+    .ipc-name { font-weight: 700; font-size: 13px; color: #1e293b; margin-bottom: 5px; }
+    .ipc-meta { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-bottom: 5px; }
+    .ipc-tag { background: rgba(99,102,241,0.08); color: #6366f1; font-size: 11px; padding: 2px 8px; border-radius: 20px; font-weight: 600; }
+    .ipc-rating { font-size: 12px; color: #f59e0b; font-weight: 700; }
+    .ipc-loc { font-size: 11px; color: #64748b; margin-bottom: 7px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .ipc-link { font-size: 11px; color: #6366f1; font-weight: 600; }
+    @keyframes cardPulse {
+      0%,100% { box-shadow: 0 2px 10px rgba(0,0,0,0.06); }
+      50% { box-shadow: 0 0 0 3px rgba(99,102,241,0.25), 0 4px 18px rgba(99,102,241,0.18); }
+    }
+    .card-highlight { animation: cardPulse 1.4s ease; }
 
     .typing .bubble { display: flex; flex-direction: column; gap: 6px; padding: 12px 16px; }
     .typing-label { font-size: 0.85em; color: #a5b4fc; }
@@ -1375,8 +1399,9 @@
       <div class="fb-detail" id="fb-detail">
         <input class="fb-search" id="fb-search" placeholder="가게명, 카테고리, 추천인 검색..." oninput="setSearch(this.value)" />
         <select class="fb-select" id="fb-sort" onchange="setSort(this.value)" style="width:100%;margin-bottom:6px;">
+          <option value="created" selected>최신순</option>
           <option value="distance">거리 순</option>
-          <option value="rating" selected>평점 순</option>
+          <option value="rating">평점 순</option>
           <option value="reviews">후기 수</option>
         </select>
         <div class="fb-cat-dropdown" id="fb-cat-dd">
@@ -1544,12 +1569,12 @@
   <div id="messages">
     <div class="msg bot">
       <div class="avatar">🤖</div>
-      <div class="bubble">안녕하세요! 회식 장소 추천 AI입니다 😊<br>인원수, 예산, 음식 종류 등을 말씀해 주시면 딱 맞는 장소를 추천해 드릴게요!</div>
+      <div class="bubble">안녕하세요, 젝스인을 위한 회식 도우미 '먹봇🤖'입니다. 오늘은 어떤 맛있는 고민을 해결해 드릴까요?</div>
     </div>
   </div>
 
   <div id="input-area">
-    <textarea id="user-input" placeholder="장소 데이터를 불러오는 중..." rows="1" disabled></textarea>
+    <textarea id="user-input" placeholder="우리 회사 근처 회식 장소 추천해줘." rows="1" disabled></textarea>
     <button id="send-btn" onclick="sendMessage()" disabled>
       <svg viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
     </button>
@@ -1779,7 +1804,7 @@
   let filterCategories = new Set();
   let filterMeal       = '';
   let filterSearch     = '';
-  let sortBy           = 'rating';
+  let sortBy           = 'created';
   let filterBarOpen    = false;
 
   /* ── Kakao API 키 ── */
@@ -2039,6 +2064,7 @@
       memo:       r.memo,
       mealTime:   r.meal_time  || [],
       reviews:    r.reviews    || [],
+      createdAt:  r.created_at || '',
     };
   }
 
@@ -2105,9 +2131,9 @@
     filterCategories.clear();
     filterMeal   = '';
     filterSearch = '';
-    sortBy       = 'rating';
+    sortBy       = 'created';
     const sortSel = document.getElementById('fb-sort');
-    if (sortSel) sortSel.value = 'rating';
+    if (sortSel) sortSel.value = 'created';
     const searchEl = document.getElementById('fb-search');
     if (searchEl) searchEl.value = '';
     document.querySelectorAll('.fb-chip').forEach((c, i) => c.classList.toggle('active', i === 0));
@@ -2154,7 +2180,9 @@
       const meals = [...new Set([...(p.mealTime || []), ...p.reviews.flatMap(r => r.mealTime || [])])];
       return meals.includes(filterMeal);
     });
-    if (sortBy === 'distance') {
+    if (sortBy === 'created') {
+      list.sort((a, b) => (b.p.createdAt || '').localeCompare(a.p.createdAt || ''));
+    } else if (sortBy === 'distance') {
       list.sort((a, b) => {
         const da = (a.p.lat && a.p.lng) ? calcDistance(+baseCoord.y, +baseCoord.x, +a.p.lat, +a.p.lng) : Infinity;
         const db = (b.p.lat && b.p.lng) ? calcDistance(+baseCoord.y, +baseCoord.x, +b.p.lat, +b.p.lng) : Infinity;
@@ -2997,11 +3025,17 @@
 
   function buildSystemPrompt(query = '', weather = null) {
     const persona = `
+[언어 규칙 — 절대 준수]
+- 모든 답변은 반드시 한국어로만 작성합니다.
+- 영어·중국어·일본어·태국어·프랑스어 등 한국어 이외의 언어는 어떤 경우에도 사용하지 않습니다.
+- 외래어가 필요한 경우 한글 표기(예: 샤브샤브, 딤섬)를 사용합니다.
+
 [페르소나]
-당신은 "GXG 회식 큐레이터"입니다. 젝스인들에게 친근하고 위트 있는 말투로 소통하되, 장소 추천과 같은 실무 처리는 빈틈없이 완벽하게 해냅니다.
+당신은 "먹봇"입니다. GXG 회식 큐레이터이자 GXG 맛잘알로서, 젝스인들에게 친근하고 위트 있는 말투로 소통하되, 장소 추천과 같은 실무 처리는 빈틈없이 완벽하게 해냅니다.
 
 [호칭 규칙 — 절대 준수]
-- 대화 상대를 지칭할 때는 "젝스인", "젝스지 여러분", "GXG 여러분" 중에서만 사용합니다.
+- 대화 상대를 지칭할 때는 "젝스인", "GXG 여러분" 중에서만 사용합니다.
+- 자신을 지칭할 때는 "먹봇", "GXG 회식 큐레이터", "GXG 맛잘알" 중에서 상황에 맞게 사용합니다.
 - "사용자", "유저", "고객" 등 공급자 중심 명칭은 절대 사용하지 않습니다.
 
 [톤앤매너]
@@ -3154,18 +3188,16 @@ ${list}
 - 되묻기는 대화 전체에서 최대 1회만 허용. 이후엔 주어진 조건으로 바로 추천.
 - 이미 조건이 하나라도 있으면 바로 추천으로 진행.
 - 모드 판단은 내부적으로만 처리하고 "모드 A로 전환합니다", "모드 B로 전환합니다" 같은 내부 동작은 절대 사용자에게 노출하지 않습니다.
-- 추천 결과는 아래 형식으로 작성하세요. 최대 3곳까지 추천:
+- 추천 결과 작성 규칙 (최대 3곳):
 
-  - 장소명과 설명을 자연스럽게 한 문장으로 엮어서 작성하세요.
   - 장소명을 문장 중간에 자연스럽게 녹여서 표현하세요.
     예) "고기라면 역시 전설의우대갈비 강남직영점이죠. 고기 맛이 일품이고..."
     예) "분위기까지 챙기고 싶다면 교대이층집을 추천해요. 단체룸이 있어서..."
-  - 각 장소는 2~3문장으로 구성하고, 줄바꿈으로 구분하세요.
-  - 리뷰나 DB 데이터 기반의 구체적인 특징을 반드시 포함하세요.
-  - 단순히 "맛있다", "좋다" 같은 막연한 표현은 피하세요.
+  - 각 장소는 DB의 리뷰·특징·분위기 등 구체적 데이터를 근거로 설명하세요.
+  - 같은 구조("~는 ~이죠", "~을/를 즐기기에 좋은", "방문해 보세요")를 장소마다 반복하지 마세요.
+  - 매 장소를 동일한 템플릿으로 시작·끝내지 말고, 각 장소의 가장 두드러진 특징을 살려 다르게 표현하세요.
+  - "맛있다", "좋다" 같은 막연한 표현 대신 DB 기반의 구체적 특징을 쓰세요.
   - 위치, 인원, 가격, 도보 시간(거리) 정보는 절대 언급하지 마세요. 거리는 별도 질문 시에만 제공합니다.
-  - 첫 문장은 사용자 요청에 공감하는 자연스러운 도입으로 시작.
-  - 마지막은 가볍게 마무리하는 한 줄 코멘트로 끝내세요.
 
 ■ 날씨 질문 ("날씨 어때?", "오늘 날씨", "비 오네" 등)
 - 위 [현재 날씨] 데이터가 있으면 날씨 상황을 자연스럽게 한 문장으로 먼저 전달하세요.
@@ -3213,12 +3245,51 @@ Let's think step by step.`;
   }
   function resolveTyping(text, isError = false) {
     const el = document.getElementById('typing-indicator');
-    if (!el) { addBotMsg(text, isError); return; }
+    if (!el) { addBotMsg(text, isError); return null; }
     el.removeAttribute('id');
     el.classList.remove('typing');
     if (isError) el.classList.add('error');
     el.querySelector('.bubble').innerHTML = renderBotText(text);
     document.getElementById('messages').scrollTop = 9999;
+    return el;
+  }
+
+  function anchorToPlace(idx) {
+    const sidebar = document.getElementById('sidebar');
+    if (window.innerWidth <= 1024) {
+      if (!sidebar.classList.contains('force-show')) sidebar.classList.add('force-show');
+    } else {
+      sidebar.classList.remove('collapsed');
+    }
+    switchTab('list');
+    setTimeout(() => {
+      const cardEl = document.getElementById(`card-${idx}`);
+      if (!cardEl) return;
+      cardEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      cardEl.classList.add('card-highlight');
+      setTimeout(() => cardEl.classList.remove('card-highlight'), 1400);
+    }, 300);
+  }
+
+  function appendInlinePlaceCard(msgEl, place, idx) {
+    const avgRating = place.reviews.length
+      ? (place.reviews.reduce((s, r) => s + r.rating, 0) / place.reviews.length).toFixed(1)
+      : null;
+    const naverUrl = `https://map.naver.com/v5/search/${encodeURIComponent(place.name)}`;
+    const card = document.createElement('div');
+    card.className = 'inline-place-card';
+    card.innerHTML = `
+      <div class="ipc-name">${esc(place.name)}</div>
+      <div class="ipc-meta">
+        ${place.category ? `<span class="ipc-tag">${esc(place.category)}</span>` : ''}
+        ${avgRating ? `<span class="ipc-rating">★ ${avgRating}</span>` : ''}
+      </div>
+      ${place.location ? `<div class="ipc-loc">📍 ${esc(place.location)}</div>` : ''}
+      <a class="ipc-link" href="${naverUrl}" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()">🗺 지도에서 보기 →</a>
+    `;
+    msgEl.insertAdjacentElement('afterend', card);
+    document.getElementById('messages').scrollTop = 9999;
+    anchorToPlace(idx);
   }
   function removeTyping() { const el = document.getElementById('typing-indicator'); if(el) el.remove(); }
 
@@ -3259,7 +3330,7 @@ Let's think step by step.`;
         body: JSON.stringify({
           model: MODEL,
           messages: [{ role: 'system', content: buildSystemPrompt(text, weather) }, ...history.slice(-6)],
-          temperature: 0.3
+          temperature: 0.7
         }),
         signal: controller.signal
       });
@@ -3282,7 +3353,22 @@ Let's think step by step.`;
           .map(p => `[${p.name} 네이버 플레이스](https://map.naver.com/v5/search/${encodeURIComponent(p.name)})`);
         if (links.length > 0) displayReply += `\n\n🔗 ${links.join(' · ')}`;
       }
-      resolveTyping(displayReply);
+      const msgEl = resolveTyping(displayReply);
+      const countOccurrences = (str, sub) => {
+        let n = 0, pos = 0;
+        while ((pos = str.indexOf(sub, pos)) !== -1) { n++; pos += sub.length; }
+        return n;
+      };
+      const firstMentioned = places
+        .filter(p => p.name && reply.includes(p.name))
+        .sort((a, b) => {
+          const diff = countOccurrences(reply, b.name) - countOccurrences(reply, a.name);
+          return diff !== 0 ? diff : reply.indexOf(a.name) - reply.indexOf(b.name);
+        })[0];
+      if (msgEl && firstMentioned) {
+        const placeIdx = places.indexOf(firstMentioned);
+        appendInlinePlaceCard(msgEl, firstMentioned, placeIdx);
+      }
       const mentionedPlaces = places
         .filter(p => p.name && reply.includes(p.name))
         .map(p => p.name);
@@ -3362,7 +3448,7 @@ Let's think step by step.`;
 
     const inputEl = document.getElementById('user-input');
     const sendBtn = document.getElementById('send-btn');
-    if (inputEl) { inputEl.disabled = false; inputEl.placeholder = '회식 조건을 말씀해주세요...'; }
+    if (inputEl) { inputEl.disabled = false; inputEl.placeholder = '우리 회사 근처 회식 장소 추천해줘.'; }
     if (sendBtn) sendBtn.disabled = false;
   });
 
